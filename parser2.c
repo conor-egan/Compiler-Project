@@ -119,6 +119,9 @@ SET ParseProcDeclarationsFBS;
 SET ProcCallListFS_aug;
 SET ProcCallListFBS;
 
+SET ParseDeclarationFS;
+SET ParseDeclarationFBS;
+
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
 /*  Main: Smallparser entry point.  Sets up parser globals (opens input and */
@@ -173,8 +176,10 @@ PRIVATE void ParseProgram( void )
     Synchronise( &ParseProgramFS_aug1, &ParseProgramFBS );
     if ( CurrentToken.code == VAR )  ParseDeclarations();
     Synchronise( &ParseProgramFS_aug2, &ParseProgramFBS );
-    while ( CurrentToken.code == PROCEDURE )  ParseProcDeclaration();
-    Synchronise( &ParseProgramFS_aug2, &ParseProgramFBS );
+    while ( CurrentToken.code == PROCEDURE ){
+      ParseProcDeclaration();
+      Synchronise( &ParseProgramFS_aug2, &ParseProgramFBS );
+    }
     ParseBlock();
     Accept( ENDOFPROGRAM );
 }
@@ -252,7 +257,7 @@ PRIVATE void RestOfStatement( void )
 {
   if ( CurrentToken.code == LEFTPARENTHESIS ) ProcCallList();
   else if ( CurrentToken.code == ASSIGNMENT ) Assignment();
-  else if ( CurrentToken.code == SEMICOLON ) Accept( SEMICOLON );
+  /*else if ( CurrentToken.code == SEMICOLON ) Accept( SEMICOLON );*/
 }
 
 PRIVATE void WriteStatement( void )
@@ -279,7 +284,7 @@ PRIVATE void Identifier( void )
 
 PRIVATE void Variable( void )
 {
-  Accept( IDENTIFIER );
+  Identifier();
 }
 
 PRIVATE void BooleanExpression( void )
@@ -330,6 +335,7 @@ PRIVATE void SubTerm( void )
   if ( CurrentToken.code == IDENTIFIER) Variable();
   else if ( CurrentToken.code == INTCONST ) IntConst();
   else if ( CurrentToken.code == LEFTPARENTHESIS ){
+    Accept( LEFTPARENTHESIS );
     Expression();
     Accept( RIGHTPARENTHESIS );
   }
@@ -401,9 +407,11 @@ PRIVATE void ParseDeclarations( void )
 {
     Accept( VAR );
     Accept( IDENTIFIER );
+    Synchronise( &ParseDeclarationFS, &ParseDeclarationFBS );	
     while ( CurrentToken.code == COMMA )  {
         Accept( COMMA );
         Accept( IDENTIFIER );
+	Synchronise( &ParseDeclarationFS, &ParseDeclarationFBS );
     }
     Accept( SEMICOLON );
 }
@@ -417,10 +425,13 @@ PRIVATE void ParseProcDeclaration( void )
   Synchronise( &ParseProcDeclarationsFS_aug1, &ParseProcDeclarationsFBS );
   if ( CurrentToken.code == VAR ) ParseDeclarations();
   Synchronise( &ParseProcDeclarationsFS_aug2, &ParseProcDeclarationsFBS );
-  while ( CurrentToken.code == PROCEDURE ) ParseProcDeclaration();
+  while ( CurrentToken.code == PROCEDURE ){
+    ParseProcDeclaration();
+    Synchronise( &ParseProcDeclarationsFS_aug2, &ParseProcDeclarationsFS_aug2 );
+  }
   ParseBlock();
   Accept( SEMICOLON );
-  Synchronise( &ParseProcDeclarationsFS_aug2, &ParseProcDeclarationsFS_aug2 );
+  
 }
 
 PRIVATE void ParseBlock( void ) 
@@ -434,7 +445,7 @@ PRIVATE void ParseBlock( void )
     Accept( SEMICOLON );
     Synchronise( &ParseBlockFS_aug, &ParseBlockFBS );
   }
-  Accept( END);
+   Accept( END);
 
 }
 
@@ -442,7 +453,7 @@ PRIVATE void ParameterList( void )
 {
   Accept( LEFTPARENTHESIS );
   FormalParameter();
-  while( CurrentToken.code == IDENTIFIER ) {
+  while( CurrentToken.code == COMMA ) {
     Accept( COMMA );
     FormalParameter();
   }
@@ -452,7 +463,7 @@ PRIVATE void ParameterList( void )
 
 PRIVATE void FormalParameter( void )
 {
-  Accept ( REF );
+  if( CurrentToken.code == REF ) Accept ( REF );
   Accept( IDENTIFIER );
 }
 
@@ -644,4 +655,6 @@ PRIVATE void SetupSets( void )
   
   ClearSet( &ProcCallListFBS );
   AddElements( &ProcCallListFBS, 3, SEMICOLON, ENDOFINPUT, ENDOFPROGRAM );
+
+
 }

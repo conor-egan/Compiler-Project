@@ -1,0 +1,439 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "global.h"
+#include "scanner.h"
+#include "line.h"
+#include "strtab.h"
+#include "code.h"
+#include "symbol.h"
+
+PRIVATE FILE *InputFile;
+PRIVATE FILE *ListFile;
+
+PRIVATE TOKEN  CurrentToken;
+
+
+
+PRIVATE void ParseProgram( void );
+PRIVATE void ParseDeclaration( void );
+PRIVATE void ParseProcDeclaration( void );
+PRIVATE void ParseParameterList( void );
+PRIVATE void ParseFormalParameter( void );
+PRIVATE void ParseBlock( void );
+PRIVATE void ParseStatement( void );
+PRIVATE void ParseSimpleStatement( void );
+PRIVATE void ParseRestOfStatement( void );
+PRIVATE void ParseProcCallList( void );
+PRIVATE void ParseAssignment( void );
+PRIVATE void ParseActualParameter( void );
+PRIVATE void ParseWhileStatement( void );
+PRIVATE void ParseIfStatement( void );
+PRIVATE void ParseReadStatement( void );
+PRIVATE void ParseWriteStatement( void );
+PRIVATE void ParseExpression( void );
+PRIVATE void ParseCompoundTerm( void );
+PRIVATE void ParseTerm( void );
+PRIVATE void ParseSubTerm( void );
+PRIVATE void ParseBooleanExpression( void );
+PRIVATE void ParseAddOp( void );
+PRIVATE void ParseMultOp( void );
+PRIVATE void ParseRelOp( void );
+PRIVATE void ParseVariable( void );
+PRIVATE void Accept( int code );
+/*PRIVATE void ReadToEndOfFile( void ); Removed in Parser2.c*/
+PRIVATE void Synchronise( SET *F, SET *FB );
+PRIVATE void SetupSets( void );
+/*PRIVATE void ParseIntConst( void );
+PRIVATE void ParseIdentifier( void );
+PRIVATE void ParseAlphaNum( void );
+PRIVATE void ParseAlpha( void );
+PRIVATE void ParseDigit( void );
+*/
+
+/*S-Algol Error Recovery Variables*/
+SET Program1FS;
+SET Program2FS;
+SET Program1FS_aug;
+SET Program2FS_aug;
+SET ProgramFBS;
+SET DeclarationFS;
+SET DeclarationFS_aug;
+SET DeclarationFBS;
+SET ProcDeclaration1FS;
+SET ProcDeclaration2FS;
+SET ProcDeclaration1FS_aug;
+SET ProcDeclaration2FS_aug;
+SET ProcDeclarationFBS;
+SET ProgramFS;
+SET ProgramFS_aug;
+SET ProgramFBS;
+SET BlockFS;
+SET BlockFBS;
+SET BlockFS_aug;
+SET ProcCallFS;
+SET ProcCallFBS;
+SET ProcCallFS_aug;
+
+PUBLIC int main ( int argc, char *argv[] ){
+     if ( argc != 3 )  {
+        fprintf( stderr, "%s <inputfile> <listfile> \n", argv[0] );
+        exit( EXIT_FAILURE );
+    }
+    else {
+        if ( NULL == ( InputFile = fopen( argv[1], "r" ) ) ) {
+            fprintf( stderr, "cannot open \"%s\" for input\n", argv[1] );
+        }
+        else if ( NULL == ( ListFile = fopen( argv[2], "w" ) ) )  {
+            fprintf( stderr, "cannot open \"%s\" for output\n", argv[2] );
+        }
+        else {
+			SetupSets();
+			InitCharProcessor( InputFile, ListFile );
+			CurrentToken = GetToken();
+			ParseProgram();
+			DumpSymbols( -1 );
+			WriteCodeFile();
+			fclose( InputFile );
+			fclose( ListFile );
+		}
+	}
+	return  EXIT_SUCCESS;
+    
+}
+
+PRIVATE void ParseProgram( void ){
+	Accept( PROGRAM );
+	Accept( IDENTIFIER ); 
+	Accept( SEMICOLON ); 
+			
+	Synchronise( &Program1FS_aug, &ProgramFBS );	
+	
+	if ( CurrentToken.code == VAR )	{
+		ParseDeclaration();
+	}
+	
+	Synchronise( &Program2FS_aug, &ProgramFBS );
+	
+	while ( CurrentToken.code == PROCEDURE ){
+		ParseProcDeclaration();
+		Synchronise( &Program2FS_aug, &ProgramFBS );
+	}
+	ParseBlock();				
+	Accept( ENDOFPROGRAM ); 
+}
+
+PRIVATE void ParseDeclaration( void ){
+	Accept( VAR );
+	ParseVariable();
+	Synchronise( &DeclarationFS, &DeclarationFBS );		
+	while ( CurrentToken.code == COMMA )		{
+		Accept( COMMA );
+		ParseVariable();
+		Synchronise( &DeclarationFS, &DeclarationFBS );
+	}
+	Accept( SEMICOLON );
+}
+
+PRIVATE void ParseProcDeclaration( void ){
+	Accept( PROCEDURE );
+	Accept( IDENTIFIER );
+	if (CurrentToken.code == LEFTPARENTHESIS){
+		ParseParameterList();
+	}		
+	Accept( SEMICOLON );
+
+	Synchronise( &ProcDeclaration1FS_aug, &ProcDeclarationFBS );		
+	if ( CurrentToken.code == VAR )	{
+		ParseDeclaration();
+	}
+	
+	Synchronise( &ProcDeclaration2FS_aug, &ProcDeclarationFBS );		
+	while ( CurrentToken.code == PROCEDURE ){
+		ParseProcDeclaration();
+		Synchronise( &ProcDeclaration2FS_aug, &ProcDeclarationFBS );
+	}
+	ParseBlock();
+	Accept( SEMICOLON );
+}
+
+PRIVATE void ParseParameterList( void ){
+	Accept( LEFTPARENTHESIS );
+	ParseFormalParameter();
+	while (CurrentToken.code == COMMA){
+		Accept(COMMA);
+		ParseFormalParameter();
+	}
+	Accept( RIGHTPARENTHESIS );
+}
+
+PRIVATE void ParseFormalParameter( void ){
+	if ( CurrentToken.code == REF ){
+		Accept(REF);
+		ParseVariable();
+	}
+	else{
+		ParseVariable();
+	}
+}
+
+PRIVATE void ParseBlock( void ){
+	Accept( BEGIN );
+	Synchronise( &BlockFS_aug, &BlockFBS );		
+	while ( InSet( &BlockFS, CurrentToken.code )){
+		ParseStatement();
+		Accept( SEMICOLON );
+		Synchronise( &BlockFS_aug, &BlockFBS );
+	}
+	Accept( END );
+}
+
+PRIVATE void ParseStatement( void ){
+    if (CurrentToken.code == IDENTIFIER){
+		ParseSimpleStatement();
+	}
+	else if (CurrentToken.code == WHILE){
+		ParseWhileStatement();
+	}
+	else if (CurrentToken.code == IF){
+		ParseIfStatement();
+	}
+	else if (CurrentToken.code == READ){
+		ParseReadStatement();
+	}
+	else if (CurrentToken.code == WRITE){
+		ParseWriteStatement();
+	}
+}
+
+PRIVATE void ParseSimpleStatement( void ){
+	ParseVariable();
+	ParseRestOfStatement();
+}
+
+PRIVATE void ParseRestOfStatement( void ){
+	if (CurrentToken.code == LEFTPARENTHESIS){
+		ParseProcCallList();
+	}
+	else if (CurrentToken.code == ASSIGNMENT) {
+		ParseAssignment();
+	}
+	else if (CurrentToken.code == SEMICOLON) {
+		Accept( SEMICOLON );
+	}
+}
+
+PRIVATE void ParseProcCallList( void ){
+	Accept( LEFTPARENTHESIS );
+	ParseActualParameter();
+	Synchronise( &ProcCallFS_aug, &ProcCallFBS );		
+	while ( CurrentToken.code == COMMA ){
+		Accept( COMMA );
+		ParseActualParameter();
+		Synchronise( &ProcCallFS_aug, &ProcCallFBS );
+	}
+	Accept( RIGHTPARENTHESIS );
+}
+
+PRIVATE void ParseAssignment( void ){
+	Accept( ASSIGNMENT );
+	ParseExpression();
+}
+
+PRIVATE void ParseActualParameter( void )
+{
+		ParseExpression();
+}
+
+PRIVATE void ParseWhileStatement( void ){
+	Accept( WHILE );
+	ParseBooleanExpression();
+	Accept( DO );
+	ParseBlock();
+}
+
+PRIVATE void ParseIfStatement( void ){
+	Accept( IF );
+	ParseBooleanExpression();
+	Accept( THEN );
+	ParseBlock();
+	if ( CurrentToken.code == ELSE ){
+		ParseBlock();
+	}		
+}
+
+PRIVATE void ParseReadStatement( void ){
+	Accept( READ );
+	ParseProcCallList();
+}
+
+PRIVATE void ParseWriteStatement( void ){
+	Accept( WRITE );
+	ParseProcCallList();
+}
+
+PRIVATE void ParseExpression( void ){
+    ParseCompoundTerm();
+	while (CurrentToken.code == SUBTRACT || CurrentToken.code == ADD){
+		ParseAddOp();
+		ParseCompoundTerm();
+	}
+}
+
+PRIVATE void ParseCompoundTerm( void ){
+	ParseTerm();
+	while (CurrentToken.code == MULTIPLY || CurrentToken.code == DIVIDE){
+		ParseMultOp();
+		ParseTerm();
+	}	
+}
+
+PRIVATE void ParseTerm( void ){
+	if ( CurrentToken.code == SUBTRACT ){
+		Accept(SUBTRACT);
+	}
+	ParseSubTerm();
+}
+
+PRIVATE void ParseSubTerm( void ){
+	if ( CurrentToken.code == LEFTPARENTHESIS ){
+		Accept( LEFTPARENTHESIS );
+		ParseExpression();
+		Accept( RIGHTPARENTHESIS );
+	}
+	else if (CurrentToken.code == IDENTIFIER) {
+		ParseVariable();
+	}
+	else if (CurrentToken.code == INTCONST){
+		Accept( INTCONST ); 
+	}
+}
+
+PRIVATE void ParseBooleanExpression( void ){
+	ParseExpression();
+	ParseRelOp();
+	ParseExpression();
+}
+
+PRIVATE void ParseAddOp(void){
+    if(CurrentToken.code == ADD){
+        Accept(ADD);
+    }
+    else if (CurrentToken.code == SUBTRACT){
+        Accept(SUBTRACT);
+    }
+}	
+
+PRIVATE void ParseMultOp(void){
+    if(CurrentToken.code == MULTIPLY){
+        Accept(MULTIPLY);
+    }
+    else if (CurrentToken.code == DIVIDE){
+        Accept(DIVIDE);
+    }
+}
+
+PRIVATE void ParseRelOp(void){
+    if(CurrentToken.code == EQUALITY){
+        Accept(EQUALITY);
+    }
+    else if (CurrentToken.code == LESSEQUAL){
+        Accept(LESSEQUAL);
+    }
+    else if (CurrentToken.code == GREATEREQUAL){
+        Accept(GREATEREQUAL);
+    }
+    else if (CurrentToken.code == LESS){
+        Accept(LESS);
+    }
+    else if (CurrentToken.code == GREATER){
+        Accept(GREATER);
+    }
+
+}
+
+PRIVATE void ParseVariable( void ){
+	Accept( IDENTIFIER );
+}
+
+PRIVATE void Accept( int ExpectedToken ){
+	static int recovering = 0;
+
+	if (recovering){
+		while (CurrentToken.code != ExpectedToken && 
+			CurrentToken.code != ENDOFINPUT)
+			CurrentToken = GetToken();
+	recovering = 0;
+	}
+
+    if ( CurrentToken.code != ExpectedToken )  {
+		SyntaxError( ExpectedToken, CurrentToken );
+		recovering = 1;
+    }
+    else { 
+		CurrentToken = GetToken();
+		}
+}
+
+/*PRIVATE void ReadToEndOfFile( void ) removed for S-Algol Error Recovery*/
+
+
+PRIVATE void Synchronise( SET *F, SET *FB ){
+	SET S;
+
+	S = Union( 2, F, FB );
+	if ( !InSet( F, CurrentToken.code ) ){
+		SyntaxError2( *F, CurrentToken );
+		KillCodeGeneration();
+		while ( !InSet( &S, CurrentToken.code ) ){
+			CurrentToken = GetToken();
+		}
+		 Error( "parsing restarts here\n", CurrentToken.pos );
+	}
+}
+
+PRIVATE void SetupSets( void ){
+	
+	ClearSet( &Program1FS );
+	AddElements( &Program1FS, 3, VAR, PROCEDURE, BEGIN );
+	ClearSet( &Program2FS );
+	AddElements( &Program2FS, 2, PROCEDURE, BEGIN );
+	ClearSet( &ProgramFBS );
+	AddElements( &ProgramFBS, 3, ENDOFINPUT, END, ENDOFPROGRAM );
+	Program1FS_aug = Program1FS;
+	AddElement( &Program1FS_aug, ENDOFPROGRAM );
+	Program2FS_aug = Program2FS;
+	AddElement( &Program2FS_aug, ENDOFPROGRAM );
+
+	ClearSet( &DeclarationFS );
+	AddElements( &DeclarationFS, 2, COMMA, SEMICOLON );
+	ClearSet( &DeclarationFBS );
+	AddElements( &DeclarationFBS, 4, PROCEDURE, BEGIN, ENDOFINPUT, ENDOFPROGRAM );
+
+	ClearSet( &ProcDeclaration1FS );
+	AddElements( &ProcDeclaration1FS, 3, VAR, PROCEDURE, BEGIN );
+	ClearSet( &ProcDeclaration2FS );
+	AddElements( &ProcDeclaration2FS, 2, PROCEDURE, BEGIN );
+	ClearSet( &ProcDeclarationFBS );
+	AddElements( &ProcDeclarationFBS, 3, ENDOFINPUT, END, ENDOFPROGRAM );
+	ProcDeclaration1FS_aug = ProcDeclaration1FS;
+	AddElement( &ProcDeclaration1FS_aug, END );
+	ProcDeclaration2FS_aug = ProcDeclaration2FS;
+	AddElement( &ProcDeclaration2FS_aug, END );
+
+	ClearSet( &ProcCallFS );
+	AddElements( &ProcCallFS, 1, COMMA );
+	ClearSet( &ProcCallFBS );
+	AddElements( &ProcCallFBS, 3, SEMICOLON, ENDOFINPUT, ENDOFPROGRAM );
+	ProcCallFS_aug = ProcCallFS;
+	AddElement( &ProcCallFS_aug, RIGHTPARENTHESIS );
+        
+	ClearSet( &BlockFS );
+	AddElements( &BlockFS, 5, IDENTIFIER, WHILE, IF, READ, WRITE );
+	ClearSet( &BlockFBS );
+	AddElements( &BlockFBS, 4, ENDOFPROGRAM, SEMICOLON, ELSE, ENDOFINPUT );
+	BlockFS_aug = BlockFS;
+	AddElement( &BlockFS_aug, END );
+}
+
