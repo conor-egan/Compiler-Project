@@ -68,7 +68,8 @@ PRIVATE void ParseProgram( void );
 PRIVATE void ParseStatement( void );
 PRIVATE void Expression( void );
 PRIVATE void Accept( int code );
-PRIVATE void ReadToEndOfFile( void );
+/*ReadToEndOfFile unnecessary after error recovery functionality added*/
+/*PRIVATE void ReadToEndOfFile( void );*/
 PRIVATE void ParseDeclarations( void );
 PRIVATE void ParseProcDeclaration( void );
 PRIVATE void ParseBlock( void );
@@ -96,6 +97,21 @@ PRIVATE void Term( void );
 PRIVATE void SubTerm( void );
 PRIVATE void IntConst( void );
 
+/*S-Algol Recovery Functions*/
+PRIVATE void Synchronise( SET *F, SET *FB );
+PRIVATE void SetupSets( void );
+
+
+SET ParseBlockFBS;
+SET ParseBlockFS_aug;
+
+SET ParseProgramFBS;
+SET ParseProgramFS_aug1;
+SET ParseProgramFS_aug2;
+
+SET ParseProcDeclarationsFS_aug1;
+SET ParseProcDeclarationsFS_aug2;
+SET ParseProcDeclarationsFSB;
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
 /*  Main: Smallparser entry point.  Sets up parser globals (opens input and */
@@ -109,6 +125,7 @@ PUBLIC int main ( int argc, char *argv[] )
     if ( OpenFiles( argc, argv ) )  {
         InitCharProcessor( InputFile, ListFile );
         CurrentToken = GetToken();
+	SetupSets();
         ParseProgram();
         fclose( InputFile );
         fclose( ListFile );
@@ -146,8 +163,11 @@ PRIVATE void ParseProgram( void )
     Accept( PROGRAM );
     Accept( IDENTIFIER );
     Accept( SEMICOLON );
+    Synchronise( &ParseProgramFS_aug1, &ParseProgramFBS );
     if ( CurrentToken.code == VAR )  ParseDeclarations();
+    Synchronise( &ParseProgramFS_aug2, &ParseProgramFBS );
     while ( CurrentToken.code == PROCEDURE )  ParseProcDeclaration();
+    Synchronise( &ParseProgramFS_aug2, &ParseProgramFBS );
     ParseBlock();
     Accept( ENDOFPROGRAM );
 }
@@ -385,22 +405,28 @@ PRIVATE void ParseProcDeclaration( void )
   Accept( IDENTIFIER );  
   if ( CurrentToken.code == LEFTPARENTHESIS ) ParameterList();
   Accept(SEMICOLON );
+  Synchronise( &ParseProcDeclarationsFS_aug1, &ParseProcDeclarationsFBS );
   if ( CurrentToken.code == VAR ) ParseDeclarations();
+  Synchronise( &ParseProcDeclarationsFS_aug2, &ParseProcDeclarationsFBS );
   while ( CurrentToken.code == PROCEDURE ) ParseProcDeclaration();
   ParseBlock();
   Accept( SEMICOLON );
+  Synchronise( &ParseProcDeclarationsFS_aug2, &ParseProcDeclarationsFS_aug2 );
 }
 
 PRIVATE void ParseBlock( void ) 
 {
   Accept( BEGIN );
+  Synchronise( &ParseBlockFS_aug, &ParseBlockFBS );
   while (CurrentToken.code == IDENTIFIER || CurrentToken.code == WHILE || CurrentToken.code == IF || 
 	 CurrentToken.code == READ || CurrentToken.code == WRITE)
         {
     ParseStatement();
     Accept( SEMICOLON );
+    Synchronise( &ParseBlockFS_aug, &ParseBlockFBS );
   }
   Accept( END);
+
 }
 
 PRIVATE void ParameterList( void )
@@ -467,17 +493,21 @@ PRIVATE void ProcCallList( void )
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
 
-PRIVATE void Accept( int ExpectedToken )
+
+ PRIVATE void Accept( int ExpectedToken )
 {
-    if ( CurrentToken.code != ExpectedToken )  {
-        SyntaxError( ExpectedToken, CurrentToken );
-        ReadToEndOfFile();
-        fclose( InputFile );
-        fclose( ListFile );
-        exit( EXIT_FAILURE );
+  static int recovering = 0;
+  if ( recovering ) {
+    while ( CurrentToken.code != ExpectedToken && CurrentToken.code != ENDOFINPUT ) CurrentToken = GetToken();
+    recovering = 0;
+  }
+  if ( CurrentToken.code != ExpectedToken ) {
+      SyntaxError( ExpectedToken, CurrentToken );
+      recovering = 1;
     }
-    else  CurrentToken = GetToken();
-}
+  else CurrentToken = GetToken();
+} 
+
 
 
 /*--------------------------------------------------------------------------*/
@@ -550,11 +580,46 @@ PRIVATE int  OpenFiles( int argc, char *argv[] )
 /*                  be any more available input after this routine returns. */
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
-
+/*
 PRIVATE void ReadToEndOfFile( void )
 {
     if ( CurrentToken.code != ENDOFINPUT )  {
         Error( "Parsing ends here in this program\n", CurrentToken.pos );
         while ( CurrentToken.code != ENDOFINPUT )  CurrentToken = GetToken();
     }
+}
+*/
+PRIVATE void Synchronise( SET *F, SET *FB )
+{
+  SET S;
+  S = Union( 2, F, FB );
+  if ( !InSet( F, CurrentToken.code ) ) {
+    SyntaxError2( *F, CurrentToken );
+    while ( !InSet( &S, CurrentToken.code ) )
+      CurrentToken = GetToken();
+  }
+} 
+
+PRIVATE void SetupSets( void )
+{
+  ClearSet( &ParseBlockFS_aug );
+  AddElements( &ParseBlockFS_aug, 6, IDENTIFIER, WHILE, IF, READ, WRITE, END );
+  ClearSet( &ParseBlockFBS );
+  AddElements( &ParseBlockFBS, 4, ENDOFPROGRAM, SEMICOLON, ELSE, ENDOFINPUT );
+
+  ClearSet( &ParseProgramFS_aug1 );
+  AddElements( &ParseProgramFS_aug1, 3, VAR, PROCEDURE, BEGIN );
+
+  ClearSet( &ParseProgramFS_aug2 );
+  AddElements( &ParseProgramFS_aug2, 2, PROCEDURE, BEGIN );
+
+  ClearSet( &ParseProcDeclarations_aug1 );
+  AddElements( &ParseProcDeclarations_aug1, 3, VAR, PROCEDURE, BEGIN );
+
+  ClearSet( &ParseProcDeclarations_aug2 );
+  AddElements( &ParseProceDeclarations_aug2, 2, PROCEDURE, BEGIN );
+
+  ClearSet( &ParseProcDeclarationsFBS );
+  AddElements( &ParseProcDeclarationsFBS, 3, END,ENDOFPROGRAM,ENDOFINPUT );
+ 
 }
