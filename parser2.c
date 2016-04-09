@@ -41,6 +41,9 @@
 #include "global.h"
 #include "scanner.h"
 #include "line.h"
+#include "strtab.h"
+#include "code.h"
+#include "symbol.h"
 
 
 /*--------------------------------------------------------------------------*/
@@ -206,7 +209,8 @@ PRIVATE void ParseStatement( void )
 
 PRIVATE void SimpleStatement( void )
 {
-  VarOrProcName();
+  /* VarOrProcName();*/
+  Variable();
   RestOfStatement();
 }
 
@@ -235,19 +239,20 @@ PRIVATE void IfStatement( void )
 PRIVATE void ReadStatement( void )
 {
   Accept( READ );
-  Accept( LEFTPARENTHESIS );
+  /*Accept( LEFTPARENTHESIS );
   Variable();
   while ( CurrentToken.code == COMMA ){
     Variable();
   }
-  Accept( RIGHTPARENTHESIS );
+  Accept( RIGHTPARENTHESIS );*/
+  ProcCallList();
 }
 
 PRIVATE void RestOfStatement( void )
 {
   if ( CurrentToken.code == LEFTPARENTHESIS ) ProcCallList();
   else if ( CurrentToken.code == ASSIGNMENT ) Assignment();
-
+  else if ( CurrentToken.code == SEMICOLON ) Accept( SEMICOLON );
 }
 
 PRIVATE void WriteStatement( void )
@@ -461,10 +466,13 @@ PRIVATE void ProcCallList( void )
   Accept( LEFTPARENTHESIS );
   ActualParameter();
   Synchronise( &ProcCallListFS_aug, &ProcCallListFBS );
-  while ( CurrentToken.code == COMMA ) ActualParameter();
+  while ( CurrentToken.code == COMMA ){
+    Accept( COMMA );
+    ActualParameter();
+    Synchronise( &ProcCallListFS_aug, &ProcCallListFBS );
+  }  
   Accept( RIGHTPARENTHESIS );
-  Synchronise( &ProcCallListFS_aug, &ProcCallListFBS );
-}
+ }
 
 
 
@@ -601,9 +609,12 @@ PRIVATE void Synchronise( SET *F, SET *FB )
   S = Union( 2, F, FB );
   if ( !InSet( F, CurrentToken.code ) ) {
     SyntaxError2( *F, CurrentToken );
+    KillCodeGeneration();
     while ( !InSet( &S, CurrentToken.code ) )
       CurrentToken = GetToken();
-  }
+    Error( "Parsing restarts here\n", CurrentToken.pos );
+ }
+ 
 } 
 
 PRIVATE void SetupSets( void )
