@@ -111,7 +111,11 @@ SET ParseProgramFS_aug2;
 
 SET ParseProcDeclarationsFS_aug1;
 SET ParseProcDeclarationsFS_aug2;
-SET ParseProcDeclarationsFSB;
+SET ParseProcDeclarationsFBS;
+
+SET ProcCallListFS_aug;
+SET ProcCallListFBS;
+
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
 /*  Main: Smallparser entry point.  Sets up parser globals (opens input and */
@@ -456,8 +460,10 @@ PRIVATE void ProcCallList( void )
 {
   Accept( LEFTPARENTHESIS );
   ActualParameter();
+  Synchronise( &ProcCallListFS_aug, &ProcCallListFBS );
   while ( CurrentToken.code == COMMA ) ActualParameter();
   Accept( RIGHTPARENTHESIS );
+  Synchronise( &ProcCallListFS_aug, &ProcCallListFBS );
 }
 
 
@@ -613,13 +619,18 @@ PRIVATE void SetupSets( void )
   ClearSet( &ParseProgramFS_aug2 );
   AddElements( &ParseProgramFS_aug2, 2, PROCEDURE, BEGIN );
 
-  ClearSet( &ParseProcDeclarations_aug1 );
-  AddElements( &ParseProcDeclarations_aug1, 3, VAR, PROCEDURE, BEGIN );
+  ClearSet( &ParseProcDeclarationsFS_aug1 );
+  AddElements( &ParseProcDeclarationsFS_aug1, 3, VAR, PROCEDURE, BEGIN );
 
-  ClearSet( &ParseProcDeclarations_aug2 );
-  AddElements( &ParseProceDeclarations_aug2, 2, PROCEDURE, BEGIN );
+  ClearSet( &ParseProcDeclarationsFS_aug2 );
+  AddElements( &ParseProcDeclarationsFS_aug2, 2, PROCEDURE, BEGIN );
 
   ClearSet( &ParseProcDeclarationsFBS );
   AddElements( &ParseProcDeclarationsFBS, 3, END,ENDOFPROGRAM,ENDOFINPUT );
  
+  ClearSet( &ProcCallListFS_aug );
+  AddElements( &ProcCallListFS_aug, 2, COMMA, RIGHTPARENTHESIS );
+  
+  ClearSet( &ProcCallListFBS );
+  AddElements( &ProcCallListFBS, 3, SEMICOLON, ENDOFINPUT, ENDOFPROGRAM );
 }
