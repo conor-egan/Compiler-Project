@@ -161,8 +161,6 @@ PUBLIC int main ( int argc, char *argv[] )
 PRIVATE void ParseProgram( void )
 {
     Accept( PROGRAM );
-   MakeSymbolTableEntry(STYPE_PROGRAM);
-
     Accept( IDENTIFIER );
     Accept( SEMICOLON );
     Synchronise( &ParseProgramFS_aug1, &ParseProgramFBS );
@@ -777,12 +775,8 @@ PRIVATE void ParameterList( void )
 
 PRIVATE void FormalParameter( void )
 {
-  if( CurrentToken.code == REF ){
-	Accept ( REF );
-	MakeSymbolTableEntry(STYPE_REFPAR);
-	}
+  if( CurrentToken.code == REF ) Accept ( REF );
   Variable();
-  MakeSymbolTableEntry(STYPE_VARIABLE);
 }
 
 /*--------------------------------------------------------------------------*/
