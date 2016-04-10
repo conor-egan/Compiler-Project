@@ -54,7 +54,7 @@
 
 PRIVATE FILE *InputFile;           /*  CPL source comes from here.          */
 PRIVATE FILE *ListFile;            /*  For nicely-formatted syntax errors.  */
-
+PRIVATE int ErrorFlag;             /*  Set if Syntax errors detected*/
 PRIVATE TOKEN  CurrentToken;       /*  Parser lookahead token.  Updated by  */
                                    /*  routine Accept (below).  Must be     */
                                    /*  initialised before parser starts.    */
@@ -116,11 +116,7 @@ SET ParseProcDeclarationsFS_aug1;
 SET ParseProcDeclarationsFS_aug2;
 SET ParseProcDeclarationsFBS;
 
-SET ProcCallListFS_aug;
-SET ProcCallListFBS;
 
-SET ParseDeclarationFS;
-SET ParseDeclarationFBS;
 
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
@@ -132,17 +128,26 @@ SET ParseDeclarationFBS;
 
 PUBLIC int main ( int argc, char *argv[] )
 {
-    if ( OpenFiles( argc, argv ) )  {
-        InitCharProcessor( InputFile, ListFile );
-        CurrentToken = GetToken();
-	SetupSets();
-        ParseProgram();
-        fclose( InputFile );
-        fclose( ListFile );
-        return  EXIT_SUCCESS;
+  ErrorFlag = 0;
+  if ( OpenFiles( argc, argv ) )  {
+    InitCharProcessor( InputFile, ListFile );
+    CurrentToken = GetToken();
+    SetupSets();
+    ParseProgram();
+    fclose( InputFile );
+    fclose( ListFile );
+    if(ErrorFlag == 1) {
+      printf("Syntax Error Detected\n");
+      return EXIT_FAILURE;
     }
-    else 
-        return EXIT_FAILURE;
+    printf("Valid Syntax\n");
+    return  EXIT_SUCCESS;
+  }
+  else
+    {
+      printf("Invalid Command Line Inputs\n");
+      return EXIT_FAILURE;
+    }   
 }
 
 
@@ -178,8 +183,8 @@ PRIVATE void ParseProgram( void )
     Synchronise( &ParseProgramFS_aug2, &ParseProgramFBS );
     while ( CurrentToken.code == PROCEDURE ){
       ParseProcDeclaration();
-      Synchronise( &ParseProgramFS_aug2, &ParseProgramFBS );
     }
+    Synchronise( &ParseProgramFS_aug2, &ParseProgramFBS );
     ParseBlock();
     Accept( ENDOFPROGRAM );
 }
@@ -210,6 +215,7 @@ PRIVATE void ParseStatement( void )
   else if ( CurrentToken.code == IF ) IfStatement();
   else if ( CurrentToken.code == READ ) ReadStatement();
   else if ( CurrentToken.code == WRITE ) WriteStatement();
+  else SyntaxError( IDENTIFIER, CurrentToken );
 }
 
 PRIVATE void SimpleStatement( void )
@@ -263,12 +269,7 @@ PRIVATE void RestOfStatement( void )
 PRIVATE void WriteStatement( void )
 {
   Accept( WRITE );
-  Accept( LEFTPARENTHESIS );
-  Expression();
-  while( CurrentToken.code == COMMA ){
-    Expression();
-  }
-  Accept( RIGHTPARENTHESIS );
+  ProcCallList();
 }
 
 PRIVATE void VarOrProcName( void )
@@ -301,12 +302,14 @@ PRIVATE void RelOp( void )
   else if ( CurrentToken.code == GREATEREQUAL ) Accept( GREATEREQUAL );
   else if ( CurrentToken.code == LESS ) Accept( LESS );
   else if ( CurrentToken.code == GREATER ) Accept( GREATER );
+  else SyntaxError( IDENTIFIER, CurrentToken );
 }
 
 PRIVATE void AddOp( void )
 {
   if ( CurrentToken.code == ADD ) Accept( ADD );
   else if ( CurrentToken.code == SUBTRACT ) Accept( SUBTRACT );
+  else SyntaxError( IDENTIFIER, CurrentToken );
 }
 
 PRIVATE void Assignment( void )
@@ -339,6 +342,7 @@ PRIVATE void SubTerm( void )
     Expression();
     Accept( RIGHTPARENTHESIS );
   }
+  else SyntaxError(IDENTIFIER,CurrentToken);
 }
 
 PRIVATE void MultOp( void )
@@ -407,11 +411,9 @@ PRIVATE void ParseDeclarations( void )
 {
     Accept( VAR );
     Accept( IDENTIFIER );
-    Synchronise( &ParseDeclarationFS, &ParseDeclarationFBS );	
     while ( CurrentToken.code == COMMA )  {
         Accept( COMMA );
         Accept( IDENTIFIER );
-	Synchronise( &ParseDeclarationFS, &ParseDeclarationFBS );
     }
     Accept( SEMICOLON );
 }
@@ -427,8 +429,8 @@ PRIVATE void ParseProcDeclaration( void )
   Synchronise( &ParseProcDeclarationsFS_aug2, &ParseProcDeclarationsFBS );
   while ( CurrentToken.code == PROCEDURE ){
     ParseProcDeclaration();
-    Synchronise( &ParseProcDeclarationsFS_aug2, &ParseProcDeclarationsFS_aug2 );
   }
+  Synchronise( &ParseProcDeclarationsFS_aug2, &ParseProcDeclarationsFS_aug2 );
   ParseBlock();
   Accept( SEMICOLON );
   
@@ -443,9 +445,9 @@ PRIVATE void ParseBlock( void )
         {
     ParseStatement();
     Accept( SEMICOLON );
-    Synchronise( &ParseBlockFS_aug, &ParseBlockFBS );
-  }
-   Accept( END);
+	}
+  Synchronise( &ParseBlockFS_aug, &ParseBlockFBS );
+  Accept( END);
 
 }
 
@@ -464,7 +466,7 @@ PRIVATE void ParameterList( void )
 PRIVATE void FormalParameter( void )
 {
   if( CurrentToken.code == REF ) Accept ( REF );
-  Accept( IDENTIFIER );
+  Variable();
 }
 
 PRIVATE void ActualParameter( void )
@@ -476,12 +478,10 @@ PRIVATE void ProcCallList( void )
 {
   Accept( LEFTPARENTHESIS );
   ActualParameter();
-  Synchronise( &ProcCallListFS_aug, &ProcCallListFBS );
   while ( CurrentToken.code == COMMA ){
     Accept( COMMA );
     ActualParameter();
-    Synchronise( &ProcCallListFS_aug, &ProcCallListFBS );
-  }  
+   }  
   Accept( RIGHTPARENTHESIS );
  }
 
@@ -529,6 +529,7 @@ PRIVATE void ProcCallList( void )
   if ( CurrentToken.code != ExpectedToken ) {
       SyntaxError( ExpectedToken, CurrentToken );
       recovering = 1;
+      ErrorFlag = 1;
     }
   else CurrentToken = GetToken();
 } 
@@ -620,7 +621,6 @@ PRIVATE void Synchronise( SET *F, SET *FB )
   S = Union( 2, F, FB );
   if ( !InSet( F, CurrentToken.code ) ) {
     SyntaxError2( *F, CurrentToken );
-    KillCodeGeneration();
     while ( !InSet( &S, CurrentToken.code ) )
       CurrentToken = GetToken();
     Error( "Parsing restarts here\n", CurrentToken.pos );
@@ -641,6 +641,9 @@ PRIVATE void SetupSets( void )
   ClearSet( &ParseProgramFS_aug2 );
   AddElements( &ParseProgramFS_aug2, 2, PROCEDURE, BEGIN );
 
+  ClearSet( &ParseProgramFBS );
+  AddElements( &ParseProgramFBS,3,END,ENDOFPROGRAM,ENDOFINPUT);
+
   ClearSet( &ParseProcDeclarationsFS_aug1 );
   AddElements( &ParseProcDeclarationsFS_aug1, 3, VAR, PROCEDURE, BEGIN );
 
@@ -650,11 +653,4 @@ PRIVATE void SetupSets( void )
   ClearSet( &ParseProcDeclarationsFBS );
   AddElements( &ParseProcDeclarationsFBS, 3, END,ENDOFPROGRAM,ENDOFINPUT );
  
-  ClearSet( &ProcCallListFS_aug );
-  AddElements( &ProcCallListFS_aug, 2, COMMA, RIGHTPARENTHESIS );
-  
-  ClearSet( &ProcCallListFBS );
-  AddElements( &ProcCallListFBS, 3, SEMICOLON, ENDOFINPUT, ENDOFPROGRAM );
-
-
 }

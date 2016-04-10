@@ -1,0 +1,15 @@
+  1 PROGRAM test3;
+  2 VAR x;
+  3 BEGIN
+  4     x = 4;
+          ^
+Syntax: Expected ;, got =
+
+          ^
+Syntax: Expected one of: END IF READ WHILE WRITE Identifier : got =
+
+             ^
+Parsing restarts here
+
+  5     WHILE x > 0 DO BEGIN
+  6         WRITE( x, x-1 );
