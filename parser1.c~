@@ -7,33 +7,8 @@
 /*                                                                          */
 /*           Conor Egan          13138782                                   */
 /*                                                                          */
-/*                                                                          */
-/*       Currently just a copy of "smallparser.c".  To create "parser1.c",  */
-/*       modify this source to reflect the CPL grammar.                     */
-/*                                                                          */
 /*--------------------------------------------------------------------------*/
-/*                                                                          */
-/*       smallparser                                                        */
-/*                                                                          */
-/*       An illustration of the use of the character handler and scanner    */
-/*       in a parser for the language                                       */
-/*                                                                          */
-/*       <Program>     :== "BEGIN" { <Statement> ";" } "END" "."            */
-/*       <Statement>   :== <Identifier> ":=" <Expression>                   */
-/*       <Expression>  :== <Identifier> | <IntConst>                        */
-/*                                                                          */
-/*                                                                          */
-/*       Note - <Identifier> and <IntConst> are provided by the scanner     */
-/*       as tokens IDENTIFIER and INTCONST respectively.                    */
-/*                                                                          */
-/*       Although the listing file generator has to be initialised in       */
-/*       this program, full listing files cannot be generated in the        */
-/*       presence of errors because of the "crash and burn" error-          */
-/*       handling policy adopted. Only the first error is reported, the     */
-/*       remainder of the input is simply copied to the output (using       */
-/*       the routine "ReadToEndOfFile") without further comment.            */
-/*                                                                          */
-/*--------------------------------------------------------------------------*/
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +16,9 @@
 #include "global.h"
 #include "scanner.h"
 #include "line.h"
+#include "strtab.h"
+#include "code.h"
+#include "symbol.h"
 
 
 /*--------------------------------------------------------------------------*/
@@ -51,7 +29,6 @@
 
 PRIVATE FILE *InputFile;           /*  CPL source comes from here.          */
 PRIVATE FILE *ListFile;            /*  For nicely-formatted syntax errors.  */
-
 PRIVATE TOKEN  CurrentToken;       /*  Parser lookahead token.  Updated by  */
                                    /*  routine Accept (below).  Must be     */
                                    /*  initialised before parser starts.    */
@@ -98,7 +75,7 @@ PRIVATE void IntConst( void );
 
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
-/*  Main: Smallparser entry point.  Sets up parser globals (opens input and */
+/*  Main: Parser entry point.  Sets up parser globals (opens input and */
 /*        output files, initialises current lookahead), then calls          */
 /*        "ParseProgram" to start the parse.                                */
 /*                                                                          */
@@ -147,9 +124,105 @@ PRIVATE void ParseProgram( void )
     Accept( IDENTIFIER );
     Accept( SEMICOLON );
     if ( CurrentToken.code == VAR )  ParseDeclarations();
-    while ( CurrentToken.code == PROCEDURE )  ParseProcDeclaration();
+    while ( CurrentToken.code == PROCEDURE ){
+      ParseProcDeclaration();
+    }
     ParseBlock();
     Accept( ENDOFPROGRAM );
+}
+
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  ParseDeclarations implements:                                           */
+/*                                                                          */
+/*        <Declarations> ::== "VAR" <Variable> { "," <Variable> } ";"       */
+/*                                                                          */
+/*       Note that <Variable> is handled by the scanner                     */
+/*       and are returned as tokens IDENTIFER and INTCONST respectively.    */
+/*                                                                          */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*                                                                          */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
+PRIVATE void ParseDeclarations( void )
+{
+    Accept( VAR );
+    Accept( IDENTIFIER );
+    while ( CurrentToken.code == COMMA )  {
+        Accept( COMMA );
+        Accept( IDENTIFIER );
+    }
+    Accept( SEMICOLON );
+}
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  ParseProcDeclarations implements:                                       */
+/*                                                                          */
+/*    <ProcDeclarations> ::== "PROCEDURE" <Identifier> [<ParameterList>]    */
+/*	                      ";" [<Declarations>]{<ProcDeclaration>}       */
+/*                            <Block> ";"                                   */
+/*                                                                          */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*                                                                          */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
+PRIVATE void ParseProcDeclaration( void )
+{
+  Accept( PROCEDURE );
+  Accept( IDENTIFIER );  
+  if ( CurrentToken.code == LEFTPARENTHESIS ) ParameterList();
+  Accept(SEMICOLON );
+  if ( CurrentToken.code == VAR ) ParseDeclarations();
+  while ( CurrentToken.code == PROCEDURE ){
+    ParseProcDeclaration();
+  }
+  ParseBlock();
+  Accept( SEMICOLON );
+  
+}
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  ParseBlock implements:                                                  */
+/*                                                                          */
+/*    <Block> ::== "BEGIN" {<Statement> ";" } "END"                         */
+/*                                                                          */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*                                                                          */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+PRIVATE void ParseBlock( void ) 
+{
+  Accept( BEGIN );
+  while (CurrentToken.code == IDENTIFIER || CurrentToken.code == WHILE || CurrentToken.code == IF || 
+	 CurrentToken.code == READ || CurrentToken.code == WRITE)
+        {
+    ParseStatement();
+    Accept( SEMICOLON );
+	}
+  Accept( END);
+
 }
 
 
@@ -158,7 +231,8 @@ PRIVATE void ParseProgram( void )
 /*                                                                          */
 /*  ParseStatement implements:                                              */
 /*                                                                          */
-/*       <Statement>   :== <Identifier> ":=" <Expression>                   */
+/*       <Statement>   :== <SimpleStatement>|<WhileStatement>|<IfStatement> */
+/*                         |<ReadStatement>|<WriteStatement>                */
 /*                                                                          */
 /*                                                                          */
 /*    Inputs:       None                                                    */
@@ -178,13 +252,47 @@ PRIVATE void ParseStatement( void )
   else if ( CurrentToken.code == IF ) IfStatement();
   else if ( CurrentToken.code == READ ) ReadStatement();
   else if ( CurrentToken.code == WRITE ) WriteStatement();
+  else SyntaxError( IDENTIFIER, CurrentToken );
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  SimpleStatement implements:                                             */
+/*                                                                          */
+/*       <SimpleStatement>   :== <VarOrProcName><RestOfStatement>           */
+/*                                                                          */
+/*    Note: Function VarOrProcName() has identical functionality to         */
+/*    function Variable().                                                  */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*    Side Effects: Lookahead token advanced.                               */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 PRIVATE void SimpleStatement( void )
 {
   VarOrProcName();
   RestOfStatement();
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  WhileStatement implements:                                              */
+/*                                                                          */
+/*       <WhileStatement>   :== "WHILE" <BooleanExpression> "DO" <Block>    */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*    Side Effects: Lookahead token advanced.                               */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void WhileStatement( void )
 {
@@ -194,7 +302,22 @@ PRIVATE void WhileStatement( void )
   ParseBlock();
 }
 
-
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  IfStatement implements:                                                 */
+/*                                                                          */
+/*       <IfStatement>   :== "IF" <BooleanExpression> "THEN" <Block>        */
+/*                           ["ELSE"<Block>]                                */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*    Side Effects: Lookahead token advanced.                               */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void IfStatement( void )
 {
@@ -208,39 +331,103 @@ PRIVATE void IfStatement( void )
   }
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  ReadStatement implements:                                               */
+/*                                                                          */
+/*       <ReadStatement>   :== "READ" "(" <Variable>{","<Variable>}")"      */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*    Side Effects: Lookahead token advanced.                               */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
 PRIVATE void ReadStatement( void )
 {
   Accept( READ );
-  Accept( LEFTPARENTHESIS );
-  Variable();
-  while ( CurrentToken.code == COMMA ){
-    Variable();
-  }
-  Accept( RIGHTPARENTHESIS );
+  ProcCallList();
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  RestOfStatement implements:                                             */
+/*                                                                          */
+/*       <RestOfStatement>   :== <ProcCallList>|<Assignment>|ε              */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*    Side Effects: Lookahead token advanced.                               */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void RestOfStatement( void )
 {
   if ( CurrentToken.code == LEFTPARENTHESIS ) ProcCallList();
   else if ( CurrentToken.code == ASSIGNMENT ) Assignment();
-
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  WriteStatement implements:                                              */
+/*                                                                          */
+/*       <WriteStatement>   :==  "WRITE" "("<Variable>{","<Variable>} ")"   */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*    Side Effects: Lookahead token advanced.                               */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void WriteStatement( void )
 {
   Accept( WRITE );
-  Accept( LEFTPARENTHESIS );
-  Expression();
-  while( CurrentToken.code == COMMA ){
-    Expression();
-  }
-  Accept( RIGHTPARENTHESIS );
+  ProcCallList();
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  VarOrProcName implements:                                               */
+/*                                                                          */
+/*       <VarOrProcName>   :==  <Identifier>                                */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 PRIVATE void VarOrProcName( void )
 {
   Identifier();
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  Identifier implements:                                                  */
+/*                                                                          */
+/*       <Identifier>   :==  <Alpha>{<AlphaNum>}                            */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void Identifier( void )
 {
@@ -248,10 +435,38 @@ PRIVATE void Identifier( void )
 
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  Variable implements:                                                    */
+/*                                                                          */
+/*       <Variable>   :==  <Identifier>                                     */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
 PRIVATE void Variable( void )
 {
-  Accept( IDENTIFIER );
+  Identifier();
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  BooleanExpression implements:                                           */
+/*                                                                          */
+/*       <BooleanExpression>   :==  <Expression><RelOp><Expression>         */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void BooleanExpression( void )
 {
@@ -260,6 +475,20 @@ PRIVATE void BooleanExpression( void )
   Expression();
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  RelOp implements:                                                       */
+/*                                                                          */
+/*       <RelOp>   :== "="|"<="|">="|"<"|">"                                */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
 PRIVATE void RelOp( void )
 {
   if ( CurrentToken.code == EQUALITY ) Accept( EQUALITY );
@@ -267,19 +496,83 @@ PRIVATE void RelOp( void )
   else if ( CurrentToken.code == GREATEREQUAL ) Accept( GREATEREQUAL );
   else if ( CurrentToken.code == LESS ) Accept( LESS );
   else if ( CurrentToken.code == GREATER ) Accept( GREATER );
+  else SyntaxError( IDENTIFIER, CurrentToken );
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  AddOp implements:                                                       */
+/*                                                                          */
+/*       <AddOp>   :==  "+"|"-"                                             */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void AddOp( void )
 {
   if ( CurrentToken.code == ADD ) Accept( ADD );
   else if ( CurrentToken.code == SUBTRACT ) Accept( SUBTRACT );
+  else SyntaxError( IDENTIFIER, CurrentToken );
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  MultOp implements:                                                      */
+/*                                                                          */
+/*       <MultOp>   :==  "*"|"/"                                            */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
+PRIVATE void MultOp( void )
+{
+  if ( CurrentToken.code == MULTIPLY ) Accept( MULTIPLY );
+  else if ( CurrentToken.code == DIVIDE ) Accept ( DIVIDE );
+}
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  Assignment implements:                                                  */
+/*                                                                          */
+/*       <Assignment>   :==  ":="<Expression>                               */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void Assignment( void )
 {
   Accept( ASSIGNMENT );
   Expression();
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  CompoundTerm implements:                                                */
+/*                                                                          */
+/*       <CompoundTerm>   :==  <Term>{<MultOp><Term>}                       */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void CompoundTerm( void )
 {
@@ -290,27 +583,65 @@ PRIVATE void CompoundTerm( void )
   }
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  Term implements:                                                        */
+/*                                                                          */
+/*       <Term>   :==  ["-"]<SubTerm>                                       */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
 PRIVATE void Term( void )
 {
   if ( CurrentToken.code == SUBTRACT ) Accept( SUBTRACT );
   SubTerm();
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  SubTerm implements:                                                     */
+/*                                                                          */
+/*       <SubTerm>   :==  <Variable>|<IntConst>| "(" <Expression> ")"       */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
 PRIVATE void SubTerm( void )
 {
   if ( CurrentToken.code == IDENTIFIER) Variable();
   else if ( CurrentToken.code == INTCONST ) IntConst();
   else if ( CurrentToken.code == LEFTPARENTHESIS ){
+    Accept( LEFTPARENTHESIS );
     Expression();
     Accept( RIGHTPARENTHESIS );
   }
+  else SyntaxError(IDENTIFIER,CurrentToken);
 }
 
-PRIVATE void MultOp( void )
-{
-  if ( CurrentToken.code == MULTIPLY ) Accept( MULTIPLY );
-  else if ( CurrentToken.code == DIVIDE ) Accept ( DIVIDE );
-}
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  IntConst implements:                                                    */
+/*                                                                          */
+/*       <IntConst>   :==  <Digit>{<Digit>}                                 */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void IntConst( void )
 {
@@ -347,16 +678,11 @@ PRIVATE void Expression( void )
   }
 }
 
-
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
-/*  ParseDeclarations implements:                                           */
+/*  ParameterList implements:                                               */
 /*                                                                          */
-/*        <Declarations> ::== "VAR" <Variable> { "," <Variable> } ";"       */
-/*                                                                          */
-/*       Note that <Variable> is handled by the scanner                     */
-/*       and are returned as tokens IDENTIFER and INTCONST respectively.    */
-/*                                                                          */
+/*      <ParameterList>   :== "("<FormalParameter>{","<FormalParameter>}")" */
 /*                                                                          */
 /*    Inputs:       None                                                    */
 /*                                                                          */
@@ -364,51 +690,13 @@ PRIVATE void Expression( void )
 /*                                                                          */
 /*    Returns:      Nothing                                                 */
 /*                                                                          */
-/*                                                                          */
-/*                                                                          */
 /*--------------------------------------------------------------------------*/
-
-PRIVATE void ParseDeclarations( void )
-{
-    Accept( VAR );
-    Accept( IDENTIFIER );
-    while ( CurrentToken.code == COMMA )  {
-        Accept( COMMA );
-        Accept( IDENTIFIER );
-    }
-    Accept( SEMICOLON );
-}
-
-PRIVATE void ParseProcDeclaration( void )
-{
-  Accept( PROCEDURE );
-  Accept( IDENTIFIER );  
-  if ( CurrentToken.code == LEFTPARENTHESIS ) ParameterList();
-  Accept(SEMICOLON );
-  if ( CurrentToken.code == VAR ) ParseDeclarations();
-  while ( CurrentToken.code == PROCEDURE ) ParseProcDeclaration();
-  ParseBlock();
-  Accept( SEMICOLON );
-}
-
-PRIVATE void ParseBlock( void ) 
-{
-  Accept( BEGIN );
- while (CurrentToken.code == IDENTIFIER || CurrentToken.code == WHILE ||
-            CurrentToken.code == IF || CurrentToken.code == READ ||
-            CurrentToken.code == WRITE)
-        {
-    ParseStatement();
-    Accept( SEMICOLON );
-  }
-  Accept( END);
-}
 
 PRIVATE void ParameterList( void )
 {
   Accept( LEFTPARENTHESIS );
   FormalParameter();
-  while( CurrentToken.code == IDENTIFIER ) {
+  while( CurrentToken.code == COMMA ) {
     Accept( COMMA );
     FormalParameter();
   }
@@ -416,27 +704,69 @@ PRIVATE void ParameterList( void )
 
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  FormalParameter implements:                                             */
+/*                                                                          */
+/*       <FormalParameter>   :== ["REF"]<Variable>                          */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
 PRIVATE void FormalParameter( void )
 {
-  Accept ( REF );
-  Accept( IDENTIFIER );
+  if( CurrentToken.code == REF ) Accept ( REF );
+  Variable();
 }
+
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  ActualParameter implements:                                             */
+/*                                                                          */
+/*       <ActualParameter>   :== <Variable>|<Expression>                    */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
 
 PRIVATE void ActualParameter( void )
 {
   Expression();
 }
 
+/*--------------------------------------------------------------------------*/
+/*                                                                          */
+/*  ProcCallList implements:                                                */
+/*                                                                          */
+/*     <ProcCallList>   :== "(" <ActualParameter>{","<ActualParameter>}")"  */
+/*                                                                          */
+/*    Inputs:       None                                                    */
+/*                                                                          */
+/*    Outputs:      None                                                    */
+/*                                                                          */
+/*    Returns:      Nothing                                                 */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+
 PRIVATE void ProcCallList( void )
 {
   Accept( LEFTPARENTHESIS );
   ActualParameter();
-  while ( CurrentToken.code == COMMA ) ActualParameter();
+  while ( CurrentToken.code == COMMA ){
+    Accept( COMMA );
+    ActualParameter();
+   }  
   Accept( RIGHTPARENTHESIS );
-}
-
-
-
+ }
 
 
 /*--------------------------------------------------------------------------*/
@@ -468,6 +798,7 @@ PRIVATE void ProcCallList( void )
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
 
+
 PRIVATE void Accept( int ExpectedToken )
 {
     if ( CurrentToken.code != ExpectedToken )  {
@@ -479,6 +810,7 @@ PRIVATE void Accept( int ExpectedToken )
     }
     else  CurrentToken = GetToken();
 }
+
 
 
 /*--------------------------------------------------------------------------*/
@@ -551,11 +883,76 @@ PRIVATE int  OpenFiles( int argc, char *argv[] )
 /*                  be any more available input after this routine returns. */
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
-
+/*
 PRIVATE void ReadToEndOfFile( void )
 {
     if ( CurrentToken.code != ENDOFINPUT )  {
         Error( "Parsing ends here in this program\n", CurrentToken.pos );
         while ( CurrentToken.code != ENDOFINPUT )  CurrentToken = GetToken();
     }
+}
+*/
+
+/*--------------------------------------------------------------------------*/
+/*    S-Algol Error Recovery                                                */
+/*                                                                          */
+/*    Synchronise: Implements S-Algol recovery. Allows parser to            */
+/*      resync on any element of a given set.                               */                                       
+/*                                                                          */
+/*    Inputs: SET *F, SET*FB                                                */
+/*    Outputs: SyntaxError2( *F, CurrentToken )                             */
+/*    Returns: Nothing                                                      */
+/*--------------------------------------------------------------------------*/
+
+PRIVATE void Synchronise( SET *F, SET *FB )
+{
+  SET S;
+  S = Union( 2, F, FB );
+  if ( !InSet( F, CurrentToken.code ) ) {
+    SyntaxError2( *F, CurrentToken );
+    while ( !InSet( &S, CurrentToken.code ) )
+      CurrentToken = GetToken();
+   }
+ 
+} 
+
+/*--------------------------------------------------------------------------*/
+/*    S-Algol Error Recovery                                                */
+/*                                                                          */
+/*    SetUpSets: Implements S-Algol recovery. Sets up sets of elements the  */
+/*    parser can re-synchronise on.                                         */                                       
+/*                                                                          */
+/*    Inputs: Nothing                                                       */
+/*    Outputs: Sync Sets                                                    */
+/*    Returns: Nothing                                                      */
+/*--------------------------------------------------------------------------*/
+
+PRIVATE void SetupSets( void )
+{
+  /*ParseBlock S-Algol Sync Sets*/
+  ClearSet( &ParseBlockFS_aug );
+  AddElements( &ParseBlockFS_aug, 6, IDENTIFIER, WHILE, IF, READ, WRITE, END );
+  ClearSet( &ParseBlockFBS );
+  AddElements( &ParseBlockFBS, 4, ENDOFPROGRAM, SEMICOLON, ELSE, ENDOFINPUT );
+
+  /*ParseProgram S-Algol Sync Sets*/
+  ClearSet( &ParseProgramFS_aug1 );
+  AddElements( &ParseProgramFS_aug1, 3, VAR, PROCEDURE, BEGIN );
+
+  ClearSet( &ParseProgramFS_aug2 );
+  AddElements( &ParseProgramFS_aug2, 2, PROCEDURE, BEGIN );
+
+  ClearSet( &ParseProgramFBS );
+  AddElements( &ParseProgramFBS,3,END,ENDOFPROGRAM,ENDOFINPUT);
+
+  /*ParseProcDeclarations S-Algol Sync Sets*/
+  ClearSet( &ParseProcDeclarationsFS_aug1 );
+  AddElements( &ParseProcDeclarationsFS_aug1, 3, VAR, PROCEDURE, BEGIN );
+
+  ClearSet( &ParseProcDeclarationsFS_aug2 );
+  AddElements( &ParseProcDeclarationsFS_aug2, 2, PROCEDURE, BEGIN );
+
+  ClearSet( &ParseProcDeclarationsFBS );
+  AddElements( &ParseProcDeclarationsFBS, 3, END,ENDOFPROGRAM,ENDOFINPUT );
+ 
 }
