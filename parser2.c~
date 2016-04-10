@@ -957,6 +957,17 @@ PRIVATE void Synchronise( SET *F, SET *FB )
  
 } 
 
+/*--------------------------------------------------------------------------*/
+/*    S-Algol Error Recovery                                                */
+/*                                                                          */
+/*    SetUpSets: Implements S-Algol recovery. Sets up sets of elements the  */
+/*    parser can re-synchronise on.                                         */                                       
+/*                                                                          */
+/*    Inputs: Nothing                                                       */
+/*    Outputs: Sync Sets                                                    */
+/*    Returns: Nothing                                                      */
+/*--------------------------------------------------------------------------*/
+
 PRIVATE void SetupSets( void )
 {
   /*ParseBlock S-Algol Sync Sets*/

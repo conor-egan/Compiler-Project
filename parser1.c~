@@ -883,7 +883,7 @@ PRIVATE int  OpenFiles( int argc, char *argv[] )
 /*                  be any more available input after this routine returns. */
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
-/*
+
 PRIVATE void ReadToEndOfFile( void )
 {
     if ( CurrentToken.code != ENDOFINPUT )  {
@@ -891,68 +891,5 @@ PRIVATE void ReadToEndOfFile( void )
         while ( CurrentToken.code != ENDOFINPUT )  CurrentToken = GetToken();
     }
 }
-*/
 
-/*--------------------------------------------------------------------------*/
-/*    S-Algol Error Recovery                                                */
-/*                                                                          */
-/*    Synchronise: Implements S-Algol recovery. Allows parser to            */
-/*      resync on any element of a given set.                               */                                       
-/*                                                                          */
-/*    Inputs: SET *F, SET*FB                                                */
-/*    Outputs: SyntaxError2( *F, CurrentToken )                             */
-/*    Returns: Nothing                                                      */
-/*--------------------------------------------------------------------------*/
 
-PRIVATE void Synchronise( SET *F, SET *FB )
-{
-  SET S;
-  S = Union( 2, F, FB );
-  if ( !InSet( F, CurrentToken.code ) ) {
-    SyntaxError2( *F, CurrentToken );
-    while ( !InSet( &S, CurrentToken.code ) )
-      CurrentToken = GetToken();
-   }
- 
-} 
-
-/*--------------------------------------------------------------------------*/
-/*    S-Algol Error Recovery                                                */
-/*                                                                          */
-/*    SetUpSets: Implements S-Algol recovery. Sets up sets of elements the  */
-/*    parser can re-synchronise on.                                         */                                       
-/*                                                                          */
-/*    Inputs: Nothing                                                       */
-/*    Outputs: Sync Sets                                                    */
-/*    Returns: Nothing                                                      */
-/*--------------------------------------------------------------------------*/
-
-PRIVATE void SetupSets( void )
-{
-  /*ParseBlock S-Algol Sync Sets*/
-  ClearSet( &ParseBlockFS_aug );
-  AddElements( &ParseBlockFS_aug, 6, IDENTIFIER, WHILE, IF, READ, WRITE, END );
-  ClearSet( &ParseBlockFBS );
-  AddElements( &ParseBlockFBS, 4, ENDOFPROGRAM, SEMICOLON, ELSE, ENDOFINPUT );
-
-  /*ParseProgram S-Algol Sync Sets*/
-  ClearSet( &ParseProgramFS_aug1 );
-  AddElements( &ParseProgramFS_aug1, 3, VAR, PROCEDURE, BEGIN );
-
-  ClearSet( &ParseProgramFS_aug2 );
-  AddElements( &ParseProgramFS_aug2, 2, PROCEDURE, BEGIN );
-
-  ClearSet( &ParseProgramFBS );
-  AddElements( &ParseProgramFBS,3,END,ENDOFPROGRAM,ENDOFINPUT);
-
-  /*ParseProcDeclarations S-Algol Sync Sets*/
-  ClearSet( &ParseProcDeclarationsFS_aug1 );
-  AddElements( &ParseProcDeclarationsFS_aug1, 3, VAR, PROCEDURE, BEGIN );
-
-  ClearSet( &ParseProcDeclarationsFS_aug2 );
-  AddElements( &ParseProcDeclarationsFS_aug2, 2, PROCEDURE, BEGIN );
-
-  ClearSet( &ParseProcDeclarationsFBS );
-  AddElements( &ParseProcDeclarationsFBS, 3, END,ENDOFPROGRAM,ENDOFINPUT );
- 
-}

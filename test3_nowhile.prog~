@@ -1,0 +1,7 @@
+PROGRAM testcomp;
+VAR x;
+BEGIN
+    x := 4;
+	WRITE( x, x-1 );
+    x := x - 1;
+END.

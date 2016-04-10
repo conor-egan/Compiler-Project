@@ -1,0 +1,23 @@
+  0  Inc   2   
+  1  Read
+  2  Store 0   
+  3  Store 1   
+  4  Add
+  5  Load  0   
+  6  Load  1   
+  7  Sub
+  8  Blz   22  
+  9  Load  0   
+ 10  Load  1   
+ 11  Add
+ 12  Load  #1   
+ 13  Add
+ 14  Write
+ 15  Load  0   
+ 16  Load  1   
+ 17  Add
+ 18  Load  #1   
+ 19  Neg
+ 20  Add
+ 21  Write
+ 22  Halt
