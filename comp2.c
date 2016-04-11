@@ -271,7 +271,6 @@ PRIVATE void ParseProcDeclaration( void )
   Accept( PROCEDURE );
   procedure = MakeSymbolTableEntry( STYPE_PROCEDURE, NULL );
   PrintTokenCode(CurrentToken.code);
-  /*MakeSymbolTableEntry( STYPE_PROCEDURE );*/ /*Make symbol table entry*/
   Accept( IDENTIFIER );  
   backpatch_addr = CurrentCodeAddress();
   Emit( I_BR, 0 );
@@ -1243,15 +1242,14 @@ PRIVATE SYMBOL *MakeSymbolTableEntry( int symtype,  int *varaddress )
 				 newsptr->type = symtype;
 
 			 }	 
-                 if ( symtype == STYPE_VARIABLE || symtype == STYPE_LOCALVAR ){ 
-        					
-newsptr->address = *varaddress;(*varaddress)++;
- PrintTokenCode(CurrentToken.code);
-				 }
-				 else {
-					 newsptr->address = -1;
-				 }
-			 }
+                         if ( symtype == STYPE_VARIABLE || symtype == STYPE_LOCALVAR ){ 
+        		   newsptr->address = *varaddress;(*varaddress)++;/*Note: This line causes segmentation error. 
+									    varaddress cannot be null.*/
+ 			 }
+		         else {
+		           newsptr->address = -1;
+		         }
+		  }
 		 
 		 else {
 			 /*<Error, variable already declared: code for this goes here>*/

@@ -148,8 +148,6 @@ PRIVATE void ParseProgram( void )
 /*                                                                          */
 /*    Returns:      Nothing                                                 */
 /*                                                                          */
-/*                                                                          */
-/*                                                                          */
 /*--------------------------------------------------------------------------*/
 
 PRIVATE void ParseDeclarations( void )

@@ -79,7 +79,7 @@ PRIVATE void IntConst( void );
 PRIVATE void Synchronise( SET *F, SET *FB );
 PRIVATE void SetupSets( void );
 
-
+/*S-Algol Recovery Sets*/
 SET ParseBlockFBS;
 SET ParseBlockFS_aug;
 
