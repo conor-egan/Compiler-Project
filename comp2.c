@@ -1216,9 +1216,7 @@ PRIVATE SYMBOL *MakeSymbolTableEntry( int symtype,  int *varaddress )
 				 if ( oldsptr == NULL ) PreserveString();
 				 newsptr->scope = scope;
 				 newsptr->type = symtype;
-				 if ( symtype == STYPE_VARIABLE ) {
-					newsptr->address = varaddress; varaddress++;
-				 }
+				 
                                  if ( symtype == STYPE_VARIABLE || symtype == STYPE_LOCALVAR ){
 				   newsptr->address = *varaddress;(*varaddress)++;
 				 }
