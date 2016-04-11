@@ -1,12 +1,12 @@
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
-/*       comp1                                                           */
+/*       comp1                                                              */
 /*                                                                          */
 /*                                                                          */
 /*       Group Members:          ID numbers                                 */
 /*                                                                          */
 /*           Conor Egan          13138782                                   */  
-/*          Niall Phillips                                                  */
+/*           Niall Phillips      13153382                                   */
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
 
@@ -31,7 +31,7 @@
 
 PRIVATE FILE *InputFile;           /*  CPL source comes from here.          */
 PRIVATE FILE *ListFile;            /*  For nicely-formatted syntax errors.  */
-PRIVATE FILE *CodeFile;
+PRIVATE FILE *CodeFile;				/* File to store generated code */
 PRIVATE int ErrorFlag;             /*  Set if Syntax errors detected*/
 PRIVATE TOKEN  CurrentToken;       /*  Parser lookahead token.  Updated by  */
                                    /*  routine Accept (below).  Must be     */
@@ -41,8 +41,8 @@ PRIVATE int scope = 0;
 PRIVATE int writing;               /* set to one while parsing arguments*/
 PRIVATE int reading;			   /* set to one while parsing arguments*/
 
-int prec[256];
-int operatorInstruction[256];
+int prec[256];						/*Array to store operator precedences*/
+int operatorInstruction[256];		/*Array to store operator instructions*/
 
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
@@ -92,6 +92,7 @@ PRIVATE void Synchronise( SET *F, SET *FB );
 PRIVATE void SetupSets( void );
 
 
+/*S-Algol Recovery Sets*/
 SET ParseBlockFBS;
 SET ParseBlockFS_aug;
 
@@ -115,34 +116,38 @@ SET ParseProcDeclarationsFBS;
 
 PUBLIC int main ( int argc, char *argv[] )
 {
-	
-	reading = 0;
-	writing = 0;
-	
-	prec[ADD] = 10;
-	prec[SUBTRACT] = 10;
-	prec[MULTIPLY] = 20;
-	prec[DIVIDE] = 20;
-	prec[SEMICOLON] = -1;
-	prec[RIGHTPARENTHESIS] = -1;
-        prec[LESS] = -1;
-	prec[GREATER] = -1;
-	prec[LESSEQUAL] = -1;
-	prec[GREATEREQUAL] = -1;
-
-	operatorInstruction[ADD] = I_ADD;
-	operatorInstruction[SUBTRACT] = I_SUB;
-	operatorInstruction[MULTIPLY] = I_MULT;
-	operatorInstruction[DIVIDE] = I_DIV;
+  /*Initialize READ & WRITE flags*/	
+  reading = 0;					
+  writing = 0;
+  
+  /*Assign precedence values to each operator*/	
+  prec[ADD] = 10;				
+  prec[SUBTRACT] = 10;
+  prec[MULTIPLY] = 20;
+  prec[DIVIDE] = 20;
+  prec[SEMICOLON] = -1;
+  prec[RIGHTPARENTHESIS] = -1;
+  prec[LESS] = -1;
+  prec[GREATER] = -1;
+  prec[LESSEQUAL] = -1;
+  prec[GREATEREQUAL] = -1;
+  prec[DO] = -1;
+  prec[THEN] = -1;
+       
+  /*Assign instructions to operators*/
+  operatorInstruction[ADD] = I_ADD;		
+  operatorInstruction[SUBTRACT] = I_SUB;
+  operatorInstruction[MULTIPLY] = I_MULT;
+  operatorInstruction[DIVIDE] = I_DIV;
 	
   ErrorFlag = 0;
   if ( OpenFiles( argc, argv ) )  {
     InitCharProcessor( InputFile, ListFile );
-    InitCodeGenerator(CodeFile);
+    InitCodeGenerator(CodeFile);	/*Initialize the code generator*/
     CurrentToken = GetToken();
     SetupSets();
     ParseProgram();
-    WriteCodeFile();
+    WriteCodeFile();		/*WRite out assembly to CodeFile and close it*/
     fclose( InputFile );
     fclose( ListFile );
     if(ErrorFlag == 1) {
@@ -222,22 +227,22 @@ PRIVATE void ParseProgram( void )
 
 PRIVATE void ParseDeclarations( void )
 {
-	int vcount = 0;	/*Counter used to count program variable*/
+    int vcount = 0;	/*Counter used to count program variable*/
 	
     Accept( VAR );
-	MakeSymbolTableEntry(STYPE_VARIABLE);	/*Make variable entry in table*/
+    MakeSymbolTableEntry(STYPE_VARIABLE);	/*Make variable entry in table*/
     Accept( IDENTIFIER );
 
-	vcount++;
+    vcount++;
     while ( CurrentToken.code == COMMA )
 	{
         Accept( COMMA );
-		MakeSymbolTableEntry(STYPE_VARIABLE); /*Make variable entry*/
+	MakeSymbolTableEntry(STYPE_VARIABLE); /*Make variable entry*/
         Accept( IDENTIFIER );
-		vcount++;
+	vcount++;
     }
     Accept( SEMICOLON );
-	Emit(I_INC, vcount);	/*Inc number of variables counted*/
+    Emit(I_INC, vcount);	/*Inc number of variables counted*/
 
 }
 
@@ -309,7 +314,7 @@ PRIVATE void ParseBlock( void )
         {
   
  ParseStatement();
-    Emit( I_LOADI, CurrentToken.value );
+    
     Accept( SEMICOLON );
 	}
   Synchronise( &ParseBlockFS_aug, &ParseBlockFBS );
@@ -367,9 +372,8 @@ PRIVATE void ParseStatement( void )
 /*--------------------------------------------------------------------------*/
 PRIVATE void SimpleStatement( void )
 {
-	SYMBOL *target; 
-	
-	target = LookupSymbol(); /* Look up IDENTIFIER in lookahead. */
+    SYMBOL *target; 			/*Create a SYMBOL pointer*/
+    target = LookupSymbol(); 	/*Look up IDENTIFIER in lookahead*/
     Accept( IDENTIFIER );
     RestOfStatement(target);
 }
@@ -392,16 +396,16 @@ PRIVATE void SimpleStatement( void )
 
 PRIVATE void WhileStatement( void )
 {
-	int Label1, Label2, L2BackPatchLoc;
+	int Label1, Label2, L2BackPatchLoc;		/*Declare integer variables*/
 	Accept( WHILE );
 
-	Label1 = CurrentCodeAddress( );
-	L2BackPatchLoc = BooleanExpression( );
+	Label1 = CurrentCodeAddress( );			/*Get current code address*/
+	L2BackPatchLoc = BooleanExpression( );	/*Call BooleanExpression and Assign to L2BackPatchLoc*/
 	Accept( DO );
-      	ParseBlock();
-	Emit( I_BR, Label1 );
+      	ParseBlock();						/*Call ParseBlock()*/
+	Emit( I_BR, Label1 );					/*Branch back to Label1 at Start of the while loop*/
 	Label2 = CurrentCodeAddress( );
-	BackPatch( L2BackPatchLoc, Label2 );
+	BackPatch( L2BackPatchLoc, Label2 );	/*Backpatch from Label2 to L2BackPatchLoc*/
 }
 
 /*--------------------------------------------------------------------------*/
@@ -419,23 +423,24 @@ PRIVATE void WhileStatement( void )
 /*                                                                          */
 /*    Side Effects: Lookahead token advanced.                               */
 /*                                                                          */
+/*	BackPatching works almost the same as in WhileStatement()	    */
+/*	but without the branch back to the start			    */
 /*--------------------------------------------------------------------------*/
 
 PRIVATE void IfStatement( void )
 {
-	int L1Label, L2Label, LBackPatchLoc;
+	int L1Label, L2Label, LBackPatchLoc;	/*Declare Integer variables*/
 	Accept( IF );
-	LBackPatchLoc = BooleanExpression();
+	LBackPatchLoc = BooleanExpression();	/*Call BooleanExpression and Assign to L2BackPatchLoc*/
 	Accept( THEN );
-	ParseBlock();
+	ParseBlock();				/*Call ParseBlock()*/
 	while ( CurrentToken.code == ELSE ){
 		Accept( ELSE);
-		L1Label = CurrentCodeAddress();
-		BackPatch(LBackPatchLoc, L1Label);
+		L1Label = CurrentCodeAddress();		/*Get current code address*/
+		BackPatch(LBackPatchLoc, L1Label);	/*Backpatch from L1Label to LBackPatchLoc*/
 		ParseBlock();
-	}
-	L2Label = CurrentCodeAddress();
-	BackPatch(LBackPatchLoc, L2Label);
+         }
+	BackPatch(LBackPatchLoc, L2Label);		/*Backpatch from L2Label to LBackPatchLoc*/
 }
 
 /*--------------------------------------------------------------------------*/
@@ -468,7 +473,7 @@ PRIVATE void ReadStatement( void )
 /*                                                                          */
 /*       <RestOfStatement>   :== <ProcCallList>|<Assignment>|ε              */
 /*                                                                          */
-/*    Inputs:       None                                                    */
+/*    Inputs:       SYMBOL *target                                          */
 /*                                                                          */
 /*    Outputs:      None                                                    */
 /*                                                                          */
@@ -476,6 +481,8 @@ PRIVATE void ReadStatement( void )
 /*                                                                          */
 /*    Side Effects: Lookahead token advanced.                               */
 /*                                                                          */
+/*	Function uses a switch statement to determine how to parse to the   */
+/*	rest of a statement.						    */
 /*--------------------------------------------------------------------------*/
 
 
@@ -487,10 +494,10 @@ PRIVATE void RestOfStatement( SYMBOL *target )
 			
 		case SEMICOLON:
 			if ( target != NULL && target->type == STYPE_PROCEDURE ) {
-				Emit( I_CALL, target->address );
+				Emit( I_CALL, target->address );	/*Call to the target Address*/
 			}
 			else {
-				printf("Error: Not a procedure\n");
+				printf("Error: Not a procedure\n");	/*Print Error and kill Code generation*/
 				KillCodeGeneration();
 			}
 			break; 
@@ -499,10 +506,10 @@ PRIVATE void RestOfStatement( SYMBOL *target )
 		default:
 			Assignment();
 			if ( target != NULL && target->type == STYPE_VARIABLE ) {
-				Emit( I_STOREA, target->address );
+				Emit( I_STOREA, target->address );	/*Store to the target Address*/
 			}
 			else {
-				printf("Error: undeclared variable\n");
+				printf("Error: undeclared variable\n");	/*Print Error and kill Code generation*/
 				KillCodeGeneration();
 			}
 			break;
@@ -598,22 +605,26 @@ PRIVATE void Variable( void )
 /*                                                                          */
 /*    Inputs:       None                                                    */
 /*                                                                          */
-/*    Outputs:      None                                                    */
+/*    Outputs:      int BackPatchAddr                                       */
 /*                                                                          */
 /*    Returns:      Nothing                                                 */
 /*                                                                          */
+/*	This function determines the relationship between two expressions.  */
+/*	It emits some assembly code and returns an int BackPatchAddr	    */
 /*--------------------------------------------------------------------------*/
 
 PRIVATE int BooleanExpression( void )
 {
-	int BackPatchAddr;
+	int BackPatchAddr;					/*Declare integer variables*/
 	int RelOpInstruction;
-	Expression();
+	Expression();						/*Expression 1*/
 	RelOpInstruction = RelOp();
-	Expression();
+	Expression();						/*Expression 2*/
 	_Emit( I_SUB );
-	BackPatchAddr = CurrentCodeAddress( );
-	Emit( RelOpInstruction, 0 );
+	BackPatchAddr = CurrentCodeAddress( ); /*Get the current code address*/
+	
+	Emit( RelOpInstruction, 0 );		/*Emit the operator from Relop() Dummy Target address for branch
+	                                         Backpatched to correct address by caller*/
 	return BackPatchAddr;
 }
 
@@ -625,10 +636,13 @@ PRIVATE int BooleanExpression( void )
 /*                                                                          */
 /*    Inputs:       None                                                    */
 /*                                                                          */
-/*    Outputs:      None                                                    */
+/*    Outputs:      int RelopInstruction                                    */
 /*                                                                          */
 /*    Returns:      Nothing                                                 */
 /*                                                                          */
+/*	This function uses a switch statement to determine which operator   */
+/*	is being parsed. It accepts the operator and then returns the  	    */
+/*	instruction for that operator					    */
 /*--------------------------------------------------------------------------*/
 
 PRIVATE int RelOp(void)
@@ -738,6 +752,8 @@ PRIVATE void Assignment( void )
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
 
+/*COMPOUNDTERM IS NOT USED IN COMP*/
+
 PRIVATE void CompoundTerm( void )
 {
 	int op;
@@ -765,13 +781,14 @@ PRIVATE void CompoundTerm( void )
 
 PRIVATE void Term( void )
 {
-	int negateflag = 0;
+	int negateflag = 0;						/*Flag to determine if term
+											  is negative*/
 	if ( CurrentToken.code == SUBTRACT ) {
 		negateflag = 1;
 		Accept( SUBTRACT );
 	}
 	SubTerm();
-	if ( negateflag ) _Emit( I_NEG );
+	if ( negateflag ) _Emit( I_NEG );		/*if flag is set Emit I_NEG*/
 }
 
 /*--------------------------------------------------------------------------*/
@@ -786,18 +803,21 @@ PRIVATE void Term( void )
 /*                                                                          */
 /*    Returns:      Nothing                                                 */
 /*                                                                          */
+/*	Function uses a switch statement whether current token code is	    */
+/*	an IDENTIFIER, INTCONST or LEFTPARENTHESIS and then parses	    */
+/*	them accordingly						    */
 /*--------------------------------------------------------------------------*/
-
 PRIVATE void SubTerm( void )
  {
-	 SYMBOL *var;
+	 SYMBOL *var;						/*Declare SYMBOL pointer*/
 	 switch ( CurrentToken.code ) {
 		 case IDENTIFIER:
 		 default:
-			 var = LookupSymbol( );
+			 var = LookupSymbol( );		/*Look in Symbol table*/
 			 if ( var != NULL && var->type == STYPE_VARIABLE ) {
 				 
-				if (writing) {
+				if (writing) {					/*Flag handlers for READ 
+												  and WRITE*/
                     Emit(I_LOADA,var->address);
                 }
                 else if (reading) {
@@ -807,7 +827,8 @@ PRIVATE void SubTerm( void )
 					Emit( I_LOADA, var->address );
 				  }
 			 }
-			 else {
+			 else {						/*Print error and kill
+										  code generation*/
 				printf("Error: Name undeclared or not a variable\n");
 				KillCodeGeneration();
 			 }
@@ -869,7 +890,7 @@ PRIVATE void IntConst( void )
 
 PRIVATE void Expression( void )
 {
-  Term();
+  Term();				/*Call to parse term and operator precedence*/
   ParseOpPrec(0);
 }
 
@@ -956,21 +977,21 @@ PRIVATE void ProcCallList( void )
 {
   Accept( LEFTPARENTHESIS );
   
-  if(reading) {                 /*emit READ before each parameter*/
+  if(reading) {                 	/*emit READ before each parameter*/
         _Emit(I_READ);
     }
   ActualParameter();
-  if(writing) {               /*emit WRITE after each parameter*/
+  if(writing) {               		/*emit WRITE after each parameter*/
        _Emit(I_WRITE);
     }
 	
   while ( CurrentToken.code == COMMA ){
     Accept( COMMA );
-	if(reading) {                 /*emit READ before each parameter*/
+	if(reading) {                 	/*emit READ before each parameter*/
 			_Emit(I_READ);
 		}
     ActualParameter();
-	if(writing) {               /*emit WRITE after each parameter*/
+	if(writing) {               	/*emit WRITE after each parameter*/
 			_Emit(I_WRITE);
 		}
    }  
@@ -1179,13 +1200,15 @@ PRIVATE void SetupSets( void )
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
 /*  MakeSymbolTableEntry(int symtype)                                       */
-/*                                                                        	*/
+/*                                                                          */
+/*  Function takes int symtype as a parameter, checks whether current token */
+/*  is already in the symbol table and if not, makes an entry		    */
 /*--------------------------------------------------------------------------*/
 
 PRIVATE void MakeSymbolTableEntry( int symtype )
 {
-	/*〈Variable Declarations here〉*/
-	SYMBOL *newsptr; /*new symbol pointer*/
+    /*〈Variable Declarations here〉*/
+    SYMBOL *newsptr; /*new symbol pointer*/
     SYMBOL *oldsptr; /*old symbol pointer*/
     char *cptr;      /*current pointer*/
     int hashindex;
@@ -1227,12 +1250,14 @@ PRIVATE void MakeSymbolTableEntry( int symtype )
 
 PRIVATE SYMBOL *LookupSymbol( void )
 {
-	static char errorbuffer[M_LINE_WIDTH+2];
+	static char errorbuffer[M_LINE_WIDTH+2];	/*Used for printing errors*/
 	
-	 SYMBOL *sptr;
+	 SYMBOL *sptr;								/*Declare SYMBOL pointer*/
 	 if ( CurrentToken.code == IDENTIFIER ) {
-		 sptr = Probe( CurrentToken.s, NULL );
-		 if ( sptr == NULL ) {
+		 sptr = Probe( CurrentToken.s, NULL );	/*Check for previous symbol
+												  table entry*/
+		 if ( sptr == NULL ) {					/*Print error and kill
+												  code generation*/
 			 sprintf(errorbuffer, "Identifier \"%s\" not declared\n", CurrentToken.s);
 			 printf( "%d Identifier not declared", CurrentToken.pos );
 			 KillCodeGeneration( );
@@ -1244,23 +1269,27 @@ PRIVATE SYMBOL *LookupSymbol( void )
 
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
-/*  ParseOpPrec( int minPrec )                                       			*/
+/*  ParseOpPrec( int minPrec )                                       		*/
 /*                                                                        	*/
+/*	This function determines the precedence of different operators 			*/
+/*	when parsing an expression. It takes int minPrec as a parameter to 		*/
+/*	guard against end of statement operators								*/
 /*--------------------------------------------------------------------------*/
 
 PRIVATE void ParseOpPrec( int minPrec )
 {
-  int op1, op2;
+  int op1, op2;					/*Declare variables*/
 
-  op1 = CurrentToken.code;
-  while( prec[op1] >= minPrec ){
-    CurrentToken = GetToken();
+  op1 = CurrentToken.code;		/*Assign the current operator codeto op1*/
+  while( prec[op1] >= minPrec ){	/*while op1 is a valid operator*/
+    CurrentToken = GetToken();		/*Advance token*/
     Term();
-    op2 = CurrentToken.code;
-    if( prec[op2] > prec[op1] ){
+    op2 = CurrentToken.code;	/*Assign the current operator codeto op2*/	
+    if( prec[op2] > prec[op1] ){	/*Determine whether op1 or op2 has
+									  higher precedence*/
       ParseOpPrec( prec[op1] + 1 );
     }
-    _Emit( operatorInstruction[op1] );
-    op1 = CurrentToken.code;
+    _Emit( operatorInstruction[op1] );	/*Emit operator instruction*/
+    op1 = CurrentToken.code;	/*Assign the current operator codeto op1*/
   }
 }
