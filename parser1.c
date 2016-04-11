@@ -32,7 +32,7 @@ PRIVATE FILE *ListFile;            /*  For nicely-formatted syntax errors.  */
 PRIVATE TOKEN  CurrentToken;       /*  Parser lookahead token.  Updated by  */
                                    /*  routine Accept (below).  Must be     */
                                    /*  initialised before parser starts.    */
-
+PRIVATE int ErrorFlag;             /*  Set if Syntax errors detected*/
 
 /*--------------------------------------------------------------------------*/
 /*                                                                          */
@@ -83,16 +83,25 @@ PRIVATE void IntConst( void );
 
 PUBLIC int main ( int argc, char *argv[] )
 {
+    ErrorFlag = 0;
     if ( OpenFiles( argc, argv ) )  {
         InitCharProcessor( InputFile, ListFile );
         CurrentToken = GetToken();
         ParseProgram();
         fclose( InputFile );
         fclose( ListFile );
+        if(ErrorFlag == 1) {
+        printf("Syntax Error Detected\n");
+        return EXIT_FAILURE;
+    }
+    printf("Valid Syntax\n");
+    return  EXIT_SUCCESS;
         return  EXIT_SUCCESS;
+        printf("Valid Syntax\n");
     }
     else 
         return EXIT_FAILURE;
+        printf("Syntax Error Detected\n");
 }
 
 
@@ -804,6 +813,7 @@ PRIVATE void Accept( int ExpectedToken )
         ReadToEndOfFile();
         fclose( InputFile );
         fclose( ListFile );
+        ErrorFlag = 1;
         exit( EXIT_FAILURE );
     }
     else  CurrentToken = GetToken();
