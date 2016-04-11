@@ -41,6 +41,8 @@ PRIVATE int scope = 1;
 PRIVATE int writing;               /* set to one while parsing arguments*/
 PRIVATE int reading;			   /* set to one while parsing arguments*/
 
+
+
 int prec[256];
 int operatorInstruction[256];
 
@@ -268,6 +270,7 @@ PRIVATE void ParseProcDeclaration( void )
   SYMBOL *procedure;
   Accept( PROCEDURE );
   procedure = MakeSymbolTableEntry( STYPE_PROCEDURE, NULL );
+  PrintTokenCode(CurrentToken.code);
   /*MakeSymbolTableEntry( STYPE_PROCEDURE );*/ /*Make symbol table entry*/
   Accept( IDENTIFIER );  
   backpatch_addr = CurrentCodeAddress();
@@ -489,7 +492,6 @@ PRIVATE void ReadStatement( void )
 /*                                                                          */
 /*--------------------------------------------------------------------------*/
 
-
 PRIVATE void RestOfStatement( SYMBOL *target )
 {
         int dS;
@@ -554,10 +556,10 @@ PRIVATE void RestOfStatement( SYMBOL *target )
 
 PRIVATE void WriteStatement( void )
 {
-	writing = 1;
+    writing = 1;
     Accept( WRITE );
     ProcCallList();
-	writing = 0;
+    writing = 0;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -595,7 +597,6 @@ PRIVATE void VarOrProcName( void )
 PRIVATE void Identifier( void )
 {
   Accept( IDENTIFIER );
-
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1220,6 +1221,7 @@ PRIVATE void SetupSets( void )
 
 PRIVATE SYMBOL *MakeSymbolTableEntry( int symtype,  int *varaddress )
 {
+  PrintTokenCode(CurrentToken.code);
     /*〈Variable Declarations here〉*/
     SYMBOL *newsptr; /*new symbol pointer*/
     SYMBOL *oldsptr; /*old symbol pointer*/
@@ -1239,15 +1241,18 @@ PRIVATE SYMBOL *MakeSymbolTableEntry( int symtype,  int *varaddress )
 				 if ( oldsptr == NULL ) PreserveString();
 				 newsptr->scope = scope;
 				 newsptr->type = symtype;
-				 
-                 if ( symtype == STYPE_VARIABLE || symtype == STYPE_LOCALVAR ){
-					newsptr->address = *varaddress;(*varaddress)++;
+
+			 }	 
+                 if ( symtype == STYPE_VARIABLE || symtype == STYPE_LOCALVAR ){ 
+        					
+newsptr->address = *varaddress;(*varaddress)++;
+ PrintTokenCode(CurrentToken.code);
 				 }
 				 else {
 					 newsptr->address = -1;
 				 }
 			 }
-		 }
+		 
 		 else {
 			 /*<Error, variable already declared: code for this goes here>*/
 			 printf("Error, variable already declared\n");

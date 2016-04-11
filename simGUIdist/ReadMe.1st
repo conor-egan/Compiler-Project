@@ -1,0 +1,10 @@
+GUI-based simulator for the CPL target virtual machine
+======================================================
+
+Run:  either simply:  simgui
+
+Or:  java -jar SimGUI.jar
+
+
+You will need a reasonably up-to-date Oracle Java JRE
+with "java" in the PATH.
