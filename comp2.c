@@ -36,7 +36,7 @@ PRIVATE int ErrorFlag;             /*  Set if Syntax errors detected*/
 PRIVATE TOKEN  CurrentToken;       /*  Parser lookahead token.  Updated by  */
                                    /*  routine Accept (below).  Must be     */
                                    /*  initialised before parser starts.    */
-PRIVATE int scope = 0;
+PRIVATE int scope = 1;
 
 PRIVATE int writing;               /* set to one while parsing arguments*/
 PRIVATE int reading;			   /* set to one while parsing arguments*/
@@ -469,10 +469,10 @@ PRIVATE void IfStatement( void )
 
 PRIVATE void ReadStatement( void )
 {
-	reading = 1;
-    Accept( READ );
-    ProcCallList();
-	reading = 0;
+  reading = 1;
+  Accept( READ );
+  ProcCallList();
+  reading = 0;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -803,17 +803,44 @@ PRIVATE void Term( void )
 
 PRIVATE void SubTerm( void )
  {
-	 SYMBOL *var;
-	 switch ( CurrentToken.code ) {
-		 case IDENTIFIER:
-		 default:
-			 var = LookupSymbol( );
-			 if ( var != NULL && var->type == STYPE_VARIABLE ) {
-				 
-				if (writing) {
+  int i, dS;	 
+  SYMBOL *var;
+  switch ( CurrentToken.code ) {
+    case IDENTIFIER:
+	  default:
+	    var = LookupSymbol( );
+	    if ( var != NULL ) {
+              if ( var -> type == STYPE_VARIABLE ){
                     Emit(I_LOADA,var->address);
                 }
-                else if (reading) {
+              
+              else if( var-> type == STYPE_LOCALVAR ){
+                dS = scope - var->scope;
+                if( dS == 0){
+                  Emit( I_LOADFP, var-> address );
+                  }
+                else{
+                  _Emit( I_LOADFP );
+                  for ( i = 0; i < dS - 1; i++ ){
+                    _Emit( I_LOADSP );
+                    }
+                  Emit( I_LOADSP, var-> address );
+                 }
+               }
+               else if ( var->type == STYPE_LOCALVAR ){
+                 dS = scope - var->scope;
+                 if ( dS == 0 ){
+                   Emit( I_LOADFP, var->address );
+                 }
+                 else{
+                   _Emit( I_LOADFP, var->address );
+                   for( i= 0; i < dS - 1; i++ ){
+                     _Emit( I_LOADSP );
+                   }
+                   Emit( I_LOADSP, var->address );
+                 }
+                }
+               else if (reading) {
                     Emit(I_STOREA,var->address);
                 }
 				else {
@@ -1231,6 +1258,7 @@ PRIVATE SYMBOL *MakeSymbolTableEntry( int symtype,  int *varaddress )
 			 KillCodeGeneration();
 		 }
 	 }
+  return newsptr;
 } 
 
 /*--------------------------------------------------------------------------*/
