@@ -492,6 +492,9 @@ PRIVATE void ReadStatement( void )
 
 PRIVATE void RestOfStatement( SYMBOL *target )
 {
+        int dS;
+        int i;
+        SYMBOL *var;
 	switch ( CurrentToken.code ) {
 		case LEFTPARENTHESIS:
 			ProcCallList( );
@@ -509,13 +512,26 @@ PRIVATE void RestOfStatement( SYMBOL *target )
 		case ASSIGNMENT:
 		default:
 			Assignment();
-			if ( target != NULL && target->type == STYPE_VARIABLE ) {
+			if ( target != NULL ){/**/
+                          if( target->type == STYPE_VARIABLE ) {
 				Emit( I_STOREA, target->address );
-			}
+			  }
+                          else if (target->type == STYPE_LOCALVAR ){
+                            dS = scope - var-> scope;
+                            if ( dS == 0 ) Emit( I_STOREFP, var->address);
+                            else{
+                              _Emit( I_STOREFP );
+                              for ( i = 0; i < dS - 1; i++ ){
+                                _Emit( I_STORESP );}
+                              Emit( I_STORESP, var->address );
+                             }
+                          }
 			else {
 				printf("Error: undeclared variable\n");
 				KillCodeGeneration();
 			}
+
+}/**/
 			break;
 	} /* End switch code */
 } /* End of ParseRestOfStatement code */
