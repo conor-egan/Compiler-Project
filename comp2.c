@@ -833,7 +833,7 @@ PRIVATE void SubTerm( void )
                    Emit( I_LOADFP, var->address );
                  }
                  else{
-                   _Emit( I_LOADFP, var->address );
+                   _Emit( I_LOADFP );
                    for( i= 0; i < dS - 1; i++ ){
                      _Emit( I_LOADSP );
                    }
