@@ -226,7 +226,6 @@ PRIVATE void ParseProgram( void )
 PRIVATE void ParseDeclarations( void )
 {
   int vcount = 0;	/*Counter used to count program variable*/
-	
   Accept( VAR );
   MakeSymbolTableEntry(STYPE_VARIABLE, NULL);	/*Make variable entry in table*/
   Accept( IDENTIFIER );
@@ -267,7 +266,6 @@ PRIVATE void ParseProcDeclaration( void )
 {
   int backpatch_addr;
   SYMBOL *procedure;
- 
   Accept( PROCEDURE );
   procedure = MakeSymbolTableEntry( STYPE_PROCEDURE, NULL );
   /*MakeSymbolTableEntry( STYPE_PROCEDURE );*/ /*Make symbol table entry*/
@@ -809,45 +807,27 @@ PRIVATE void SubTerm( void )
     case IDENTIFIER:
 	  default:
 	    var = LookupSymbol( );
-	    if ( var != NULL ) {
-              if ( var -> type == STYPE_VARIABLE ){
+	    if ( var != NULL && var->type == STYPE_VARIABLE ) {
+            if (writing) {
                     Emit(I_LOADA,var->address);
-                }
-              
-              else if( var-> type == STYPE_LOCALVAR ){
-                dS = scope - var->scope;
-                if( dS == 0){
-                  Emit( I_LOADFP, var-> address );
-                  }
-                else{
-                  _Emit( I_LOADFP );
-                  for ( i = 0; i < dS - 1; i++ ){
-                    _Emit( I_LOADSP );
-                    }
-                  Emit( I_LOADSP, var-> address );
-                 }
-               }
-               else if ( var->type == STYPE_LOCALVAR ){
-                 dS = scope - var->scope;
-                 if ( dS == 0 ){
-                   Emit( I_LOADFP, var->address );
-                 }
-                 else{
-                   _Emit( I_LOADFP );
-                   for( i= 0; i < dS - 1; i++ ){
-                     _Emit( I_LOADSP );
-                   }
-                   Emit( I_LOADSP, var->address );
-                 }
-                }
-               else if (reading) {
+			}
+			else if (reading) {
                     Emit(I_STOREA,var->address);
-                }
-				else {
-					Emit( I_LOADA, var->address );
-				  }
-			 }
-			 else {
+			}
+			else {
+				Emit( I_LOADA, var->address );
+			}
+			
+		} else if (var->type == STYPE_LOCALVAR){
+			dS = scope-var->scope;
+			if(dS  == 0) Emit(I_LOADFP, var->address);
+			else {
+				_Emit(I_LOADFP);
+				for(i=0; i<dS-1; i++) _Emit(I_LOADSP);
+				Emit(I_LOADSP, var->address);
+			}
+		}
+		else {
 				printf("Error: Name undeclared or not a variable\n");
 				KillCodeGeneration();
 			 }
@@ -1244,8 +1224,8 @@ PRIVATE SYMBOL *MakeSymbolTableEntry( int symtype,  int *varaddress )
 				 newsptr->scope = scope;
 				 newsptr->type = symtype;
 				 
-                                 if ( symtype == STYPE_VARIABLE || symtype == STYPE_LOCALVAR ){
-				   newsptr->address = *varaddress;(*varaddress)++;
+                 if ( symtype == STYPE_VARIABLE || symtype == STYPE_LOCALVAR ){
+					newsptr->address = *varaddress;(*varaddress)++;
 				 }
 				 else {
 					 newsptr->address = -1;

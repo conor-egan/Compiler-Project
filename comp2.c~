@@ -36,7 +36,7 @@ PRIVATE int ErrorFlag;             /*  Set if Syntax errors detected*/
 PRIVATE TOKEN  CurrentToken;       /*  Parser lookahead token.  Updated by  */
                                    /*  routine Accept (below).  Must be     */
                                    /*  initialised before parser starts.    */
-PRIVATE int scope = 0;
+PRIVATE int scope = 1;
 
 PRIVATE int writing;               /* set to one while parsing arguments*/
 PRIVATE int reading;			   /* set to one while parsing arguments*/
@@ -85,7 +85,7 @@ PRIVATE void SubTerm( void );
 PRIVATE void IntConst( void );
 PRIVATE SYMBOL *LookupSymbol( void );
 PRIVATE void ParseOpPrec( int minPrec );
-PRIVATE void MakeSymbolTableEntry( int symtype );
+PRIVATE SYMBOL *MakeSymbolTableEntry( int symtype, int *varaddress );
 
 /*S-Algol Recovery Functions*/
 PRIVATE void Synchronise( SET *F, SET *FB );
@@ -225,22 +225,22 @@ PRIVATE void ParseProgram( void )
 
 PRIVATE void ParseDeclarations( void )
 {
-	int vcount = 0;	/*Counter used to count program variable*/
+  int vcount = 0;	/*Counter used to count program variable*/
 	
-    Accept( VAR );
-	MakeSymbolTableEntry(STYPE_VARIABLE);	/*Make variable entry in table*/
-    Accept( IDENTIFIER );
+  Accept( VAR );
+  MakeSymbolTableEntry(STYPE_VARIABLE, NULL);	/*Make variable entry in table*/
+  Accept( IDENTIFIER );
 
-	vcount++;
-    while ( CurrentToken.code == COMMA )
-	{
+  vcount++;
+  while ( CurrentToken.code == COMMA )
+     {
         Accept( COMMA );
-		MakeSymbolTableEntry(STYPE_VARIABLE); /*Make variable entry*/
+	MakeSymbolTableEntry(STYPE_VARIABLE, NULL); /*Make variable entry*/
         Accept( IDENTIFIER );
 		vcount++;
     }
-    Accept( SEMICOLON );
-	Emit(I_INC, vcount);	/*Inc number of variables counted*/
+  Accept( SEMICOLON );
+  Emit(I_INC, vcount);	/*Inc number of variables counted*/
 
 }
 
@@ -265,10 +265,18 @@ PRIVATE void ParseDeclarations( void )
 
 PRIVATE void ParseProcDeclaration( void )
 {
+  int backpatch_addr;
+  SYMBOL *procedure;
+ 
   Accept( PROCEDURE );
-  MakeSymbolTableEntry( STYPE_PROCEDURE ); /*Make symbol table entry*/
+  procedure = MakeSymbolTableEntry( STYPE_PROCEDURE, NULL );
+  /*MakeSymbolTableEntry( STYPE_PROCEDURE );*/ /*Make symbol table entry*/
   Accept( IDENTIFIER );  
+  backpatch_addr = CurrentCodeAddress();
+  Emit( I_BR, 0 );
+  procedure->address = CurrentCodeAddress();
   scope++;				/*Increase precedence for procedure variables*/
+  
   if ( CurrentToken.code == LEFTPARENTHESIS ) ParameterList();
   Accept(SEMICOLON );
   Synchronise( &ParseProcDeclarationsFS_aug1, &ParseProcDeclarationsFBS );
@@ -281,6 +289,8 @@ PRIVATE void ParseProcDeclaration( void )
   ParseBlock();
   Accept( SEMICOLON );
   
+  _Emit( I_RET );
+  BackPatch( backpatch_addr, CurrentCodeAddress() );
   RemoveSymbols(scope);
   scope--;
   
@@ -459,10 +469,10 @@ PRIVATE void IfStatement( void )
 
 PRIVATE void ReadStatement( void )
 {
-	reading = 1;
-    Accept( READ );
-    ProcCallList();
-	reading = 0;
+  reading = 1;
+  Accept( READ );
+  ProcCallList();
+  reading = 0;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -793,17 +803,44 @@ PRIVATE void Term( void )
 
 PRIVATE void SubTerm( void )
  {
-	 SYMBOL *var;
-	 switch ( CurrentToken.code ) {
-		 case IDENTIFIER:
-		 default:
-			 var = LookupSymbol( );
-			 if ( var != NULL && var->type == STYPE_VARIABLE ) {
-				 
-				if (writing) {
+  int i, dS;	 
+  SYMBOL *var;
+  switch ( CurrentToken.code ) {
+    case IDENTIFIER:
+	  default:
+	    var = LookupSymbol( );
+	    if ( var != NULL ) {
+              if ( var -> type == STYPE_VARIABLE ){
                     Emit(I_LOADA,var->address);
                 }
-                else if (reading) {
+              
+              else if( var-> type == STYPE_LOCALVAR ){
+                dS = scope - var->scope;
+                if( dS == 0){
+                  Emit( I_LOADFP, var-> address );
+                  }
+                else{
+                  _Emit( I_LOADFP );
+                  for ( i = 0; i < dS - 1; i++ ){
+                    _Emit( I_LOADSP );
+                    }
+                  Emit( I_LOADSP, var-> address );
+                 }
+               }
+               else if ( var->type == STYPE_LOCALVAR ){
+                 dS = scope - var->scope;
+                 if ( dS == 0 ){
+                   Emit( I_LOADFP, var->address );
+                 }
+                 else{
+                   _Emit( I_LOADFP );
+                   for( i= 0; i < dS - 1; i++ ){
+                     _Emit( I_LOADSP );
+                   }
+                   Emit( I_LOADSP, var->address );
+                 }
+                }
+               else if (reading) {
                     Emit(I_STOREA,var->address);
                 }
 				else {
@@ -1185,14 +1222,14 @@ PRIVATE void SetupSets( void )
 /*                                                                        	*/
 /*--------------------------------------------------------------------------*/
 
-PRIVATE void MakeSymbolTableEntry( int symtype )
+PRIVATE SYMBOL *MakeSymbolTableEntry( int symtype,  int *varaddress )
 {
-	/*〈Variable Declarations here〉*/
-	SYMBOL *newsptr; /*new symbol pointer*/
+    /*〈Variable Declarations here〉*/
+    SYMBOL *newsptr; /*new symbol pointer*/
     SYMBOL *oldsptr; /*old symbol pointer*/
     char *cptr;      /*current pointer*/
     int hashindex;
-    static int varaddress = 0;
+  
 	 
 	 if ( CurrentToken.code == IDENTIFIER ) {
 		 if ( NULL == ( oldsptr = Probe( CurrentToken.s, &hashindex )) || oldsptr->scope < scope ) {
@@ -1206,8 +1243,9 @@ PRIVATE void MakeSymbolTableEntry( int symtype )
 				 if ( oldsptr == NULL ) PreserveString();
 				 newsptr->scope = scope;
 				 newsptr->type = symtype;
-				 if ( symtype == STYPE_VARIABLE ) {
-					newsptr->address = varaddress; varaddress++;
+				 
+                                 if ( symtype == STYPE_VARIABLE || symtype == STYPE_LOCALVAR ){
+				   newsptr->address = *varaddress;(*varaddress)++;
 				 }
 				 else {
 					 newsptr->address = -1;
@@ -1220,6 +1258,7 @@ PRIVATE void MakeSymbolTableEntry( int symtype )
 			 KillCodeGeneration();
 		 }
 	 }
+  return newsptr;
 } 
 
 /*--------------------------------------------------------------------------*/
